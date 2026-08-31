@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#17111f">
+  <title>OBS Scenes</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <p class="eyebrow">SLACKTOP · OBS</p>
+        <h1>Scene switcher</h1>
+      </div>
+      <button id="refresh" class="icon" type="button" aria-label="Refresh scenes">↻</button>
+    </header>
+    <section class="status" aria-live="polite">
+      <span id="dot" class="dot"></span>
+      <span id="status">Connecting…</span>
+    </section>
+    <section id="scenes" class="scenes" aria-label="OBS scenes"></section>
+  </main>
+  <template id="scene-template">
+    <button class="scene" type="button"><span></span><small>Tap to switch</small></button>
+  </template>
+  <script src="/app.js" defer></script>
+</body>
+</html>
