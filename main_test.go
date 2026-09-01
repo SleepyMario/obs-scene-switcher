@@ -1,6 +1,10 @@
 package main
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 func TestWireGuardOnly(t *testing.T) {
 	for _, address := range []string{"10.77.0.2:8798", "10.77.0.1:9000"} {
@@ -12,6 +16,34 @@ func TestWireGuardOnly(t *testing.T) {
 		if err := wireGuardOnly(address); err == nil {
 			t.Fatalf("expected %s to be rejected", address)
 		}
+	}
+}
+
+func TestSubtitleOutputIsPrivateAndAtomicallyReplaced(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "captions", "original.txt")
+	if err := atomicText(path, "你好"); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "你好\n" {
+		t.Fatalf("caption=%q", data)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0600 {
+		t.Fatalf("mode=%o", info.Mode().Perm())
+	}
+	if err := atomicText(path, ""); err != nil {
+		t.Fatal(err)
+	}
+	data, err = os.ReadFile(path)
+	if err != nil || len(data) != 0 {
+		t.Fatalf("caption was not cleared: %q %v", data, err)
 	}
 }
 

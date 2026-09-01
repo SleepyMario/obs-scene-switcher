@@ -21,6 +21,7 @@ main {
 header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
 .eyebrow { margin: 0 0 .3rem; color: #dca3d1; font-size: .72rem; font-weight: 800; letter-spacing: .16em; }
 h1 { margin: 0; font-size: clamp(1.8rem, 8vw, 2.7rem); line-height: 1; }
+h2 { margin: .15rem 0 .4rem; font-size: 1.25rem; }
 .icon {
   width: 3.2rem; height: 3.2rem; border: 1px solid #513759; border-radius: 50%;
   background: rgba(255,255,255,.06); color: #f8f2ff; font-size: 1.65rem;
@@ -50,4 +51,18 @@ h1 { margin: 0; font-size: clamp(1.8rem, 8vw, 2.7rem); line-height: 1; }
 }
 .scene.current small { color: #ffd9f2; }
 .scene[disabled] { opacity: .55; }
+.subtitle-card {
+  display: grid; gap: 1rem; margin-top: 1rem; padding: 1rem;
+  border: 1px solid #4a3451; border-radius: 1.15rem;
+  background: linear-gradient(145deg, rgba(223,111,184,.16), rgba(255,255,255,.025));
+}
+.subtitle-card p { margin: 0; color: #cfc2d6; font-size: .84rem; }
+.subtitle-actions { display: grid; grid-template-columns: 1fr auto; gap: .65rem; }
+.subtitle-button {
+  min-height: 3.25rem; padding: .75rem 1rem; border: 1px solid #69466f;
+  border-radius: .9rem; color: #fff7fc; font-weight: 800; touch-action: manipulation;
+}
+.subtitle-button.start { background: linear-gradient(145deg, #b95899, #793b84); }
+.subtitle-button.stop { background: rgba(255,255,255,.06); }
+.subtitle-button:disabled { opacity: .42; }
 @media (min-width: 38rem) { .scenes { grid-template-columns: repeat(3, minmax(0, 1fr)); } }

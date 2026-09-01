@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+controller="${STREAM_SUBTITLE_CONTROLLER:-http://10.77.0.2:8798}"
+action="${1:-status}"
+
+case "$action" in
+  start|stop)
+    response="$(curl --fail-with-body --silent --show-error --request POST "${controller}/api/subtitles/${action}")"
+    ;;
+  status)
+    response="$(curl --fail-with-body --silent --show-error "${controller}/api/subtitles")"
+    ;;
+  *)
+    echo "Usage: stream-subtitles {start|status|stop}" >&2
+    exit 2
+    ;;
+esac
+
+if command -v jq >/dev/null 2>&1; then
+  printf '%s\n' "$response" | jq .
+else
+  printf '%s\n' "$response"
+fi

@@ -3,7 +3,11 @@ const statusElement = document.querySelector('#status');
 const dotElement = document.querySelector('#dot');
 const template = document.querySelector('#scene-template');
 const refreshButton = document.querySelector('#refresh');
+const subtitleStatus = document.querySelector('#subtitle-status');
+const subtitleStart = document.querySelector('#subtitle-start');
+const subtitleStop = document.querySelector('#subtitle-stop');
 let switching = false;
+let changingSubtitles = false;
 
 function setStatus(text, online) {
   statusElement.textContent = text;
@@ -55,5 +59,42 @@ async function switchScene(name) {
 }
 
 refreshButton.addEventListener('click', () => loadScenes());
+async function loadSubtitleStatus() {
+  try {
+    const response = await fetch('/api/subtitles', { cache: 'no-store' });
+    const data = await response.json();
+    const state = data.state || 'unknown';
+    subtitleStatus.textContent = data.message || state;
+    subtitleStart.disabled = changingSubtitles || !['idle', 'error'].includes(state);
+    subtitleStop.disabled = changingSubtitles || ['idle', 'disabled'].includes(state);
+  } catch (error) {
+    subtitleStatus.textContent = `Subtitle controller unavailable · ${error.message}`;
+    subtitleStart.disabled = true;
+    subtitleStop.disabled = true;
+  }
+}
+
+async function changeSubtitles(action) {
+  if (changingSubtitles) return;
+  changingSubtitles = true;
+  subtitleStart.disabled = true;
+  subtitleStop.disabled = true;
+  subtitleStatus.textContent = action === 'start' ? 'Starting GPU worker…' : 'Stopping and deleting GPU worker…';
+  try {
+    const response = await fetch(`/api/subtitles/${action}`, { method: 'POST' });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || `${action} failed`);
+  } catch (error) {
+    subtitleStatus.textContent = `Subtitle ${action} failed · ${error.message}`;
+  } finally {
+    changingSubtitles = false;
+    await loadSubtitleStatus();
+  }
+}
+
+subtitleStart.addEventListener('click', () => changeSubtitles('start'));
+subtitleStop.addEventListener('click', () => changeSubtitles('stop'));
 loadScenes();
+loadSubtitleStatus();
 setInterval(() => { if (!switching && !document.hidden) loadScenes({ quiet: true }); }, 2500);
+setInterval(() => { if (!changingSubtitles && !document.hidden) loadSubtitleStatus(); }, 5000);

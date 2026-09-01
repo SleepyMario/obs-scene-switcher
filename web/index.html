@@ -21,6 +21,17 @@
       <span id="status">Connecting…</span>
     </section>
     <section id="scenes" class="scenes" aria-label="OBS scenes"></section>
+    <section class="subtitle-card" aria-labelledby="subtitle-title">
+      <div>
+        <p class="eyebrow">GPU SUBTITLES</p>
+        <h2 id="subtitle-title">Original + English</h2>
+        <p id="subtitle-status">Checking subtitle worker…</p>
+      </div>
+      <div class="subtitle-actions">
+        <button id="subtitle-start" class="subtitle-button start" type="button">Start subtitles</button>
+        <button id="subtitle-stop" class="subtitle-button stop" type="button">Stop</button>
+      </div>
+    </section>
   </main>
   <template id="scene-template">
     <button class="scene" type="button"><span></span><small>Tap to switch</small></button>
