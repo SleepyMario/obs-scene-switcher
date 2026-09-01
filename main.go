@@ -60,6 +60,7 @@ func main() {
 	mux.HandleFunc("POST /api/subtitles/start", app.subtitleStart)
 	mux.HandleFunc("POST /api/subtitles/stop", app.subtitleStop)
 	mux.HandleFunc("POST /api/subtitles/mode/{mode}", app.subtitleMode)
+	mux.HandleFunc("GET /api/platforms", app.platformStatus)
 	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	})
@@ -103,6 +104,7 @@ type subtitleController struct {
 	message string
 	mode    string
 	active  string
+	started time.Time
 	remote  map[string]any
 	cancel  context.CancelFunc
 	local   func(context.Context, string) error
@@ -114,12 +116,20 @@ type subtitleLease struct {
 	Token     string `json:"token"`
 }
 
+type platformIndicator struct {
+	Live        bool   `json:"live"`
+	Available   bool   `json:"available"`
+	Title       string `json:"title,omitempty"`
+	Category    string `json:"category,omitempty"`
+	ViewerCount int    `json:"viewer_count,omitempty"`
+}
+
 func newSubtitleController(cfg subtitleConfig) *subtitleController {
 	mode := "remote"
 	if saved, err := os.ReadFile(cfg.ModePath); err == nil && validSubtitleMode(strings.TrimSpace(string(saved))) {
 		mode = strings.TrimSpace(string(saved))
 	}
-	controller := &subtitleController{cfg: cfg, http: &http.Client{Timeout: 35 * time.Second}, state: "idle", mode: mode}
+	controller := &subtitleController{cfg: cfg, http: &http.Client{Timeout: 35 * time.Second}, state: "idle", message: "Subtitles are off", mode: mode}
 	controller.local = func(ctx context.Context, action string) error {
 		if cfg.LocalCommand == "" {
 			return errors.New("local subtitle command is not configured")
@@ -187,10 +197,31 @@ func (s *subtitleController) request(ctx context.Context, method, path string, r
 	return nil
 }
 
+func (s *subtitleController) platforms(ctx context.Context) (map[string]platformIndicator, error) {
+	platforms := map[string]platformIndicator{"twitch": {}, "kick": {}, "youtube": {}}
+	if s.cfg.APIURL == "" || s.cfg.Password == "" {
+		return platforms, errors.New("Streamchat VPS status is not configured")
+	}
+	var state struct {
+		Stream struct {
+			Channels map[string]platformIndicator `json:"channels"`
+		} `json:"stream"`
+	}
+	if err := s.request(ctx, http.MethodGet, "/api/state", &state); err != nil {
+		return platforms, err
+	}
+	for name := range platforms {
+		if status, ok := state.Stream.Channels[name]; ok {
+			platforms[name] = status
+		}
+	}
+	return platforms, nil
+}
+
 func (s *subtitleController) snapshot() map[string]any {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return map[string]any{"state": s.state, "message": s.message, "mode": s.mode, "active_mode": s.active, "remote": s.remote, "source_configured": s.cfg.Source != "", "local_available": s.cfg.LocalCommand != ""}
+	return map[string]any{"state": s.state, "message": s.message, "mode": s.mode, "active_mode": s.active, "started_at": s.started, "remote": s.remote, "remote_configured": s.cfg.APIURL != "" && s.cfg.Password != "", "source_configured": s.cfg.Source != "", "local_available": s.cfg.LocalCommand != ""}
 }
 
 func (s *subtitleController) start() error {
@@ -213,17 +244,17 @@ func (s *subtitleController) start() error {
 		s.mu.Unlock()
 		if err := s.local(context.Background(), "start"); err != nil {
 			s.mu.Lock()
-			s.state, s.message, s.active = "error", err.Error(), ""
+			s.state, s.message, s.active, s.started = "error", err.Error(), "", time.Time{}
 			s.mu.Unlock()
 			return err
 		}
 		s.mu.Lock()
-		s.state, s.message = "running", "Local subtitles are live"
+		s.state, s.message, s.started = "running", "Local subtitles are live", time.Now().UTC()
 		s.mu.Unlock()
 		return nil
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	s.cancel, s.state, s.message, s.active = cancel, "starting", "Requesting a temporary GPU worker", "remote"
+	s.cancel, s.state, s.message, s.active, s.started = cancel, "starting", "Requesting a temporary GPU worker", "remote", time.Now().UTC()
 	s.mu.Unlock()
 	go s.run(ctx)
 	return nil
@@ -283,7 +314,7 @@ func (s *subtitleController) run(ctx context.Context) {
 			if ctx.Err() == nil {
 				stopErr := s.remoteStop(context.Background())
 				s.mu.Lock()
-				s.cancel, s.remote, s.active = nil, nil, ""
+				s.cancel, s.remote, s.active, s.started = nil, nil, "", time.Time{}
 				if stopErr != nil {
 					s.state, s.message = "error", stopErr.Error()
 				} else {
@@ -308,7 +339,7 @@ func (s *subtitleController) run(ctx context.Context) {
 
 func (s *subtitleController) fail(err error) {
 	s.mu.Lock()
-	s.state, s.message, s.cancel, s.active = "error", err.Error(), nil, ""
+	s.state, s.message, s.cancel, s.active, s.started = "error", err.Error(), nil, "", time.Time{}
 	s.mu.Unlock()
 	clearSubtitleOutputs(s.cfg)
 	_ = s.remoteStop(context.Background())
@@ -341,7 +372,7 @@ func (s *subtitleController) stop(ctx context.Context) error {
 		err = s.remoteStop(ctx)
 	}
 	s.mu.Lock()
-	s.cancel, s.remote, s.active = nil, nil, ""
+	s.cancel, s.remote, s.active, s.started = nil, nil, "", time.Time{}
 	if err != nil {
 		s.state, s.message = "error", err.Error()
 	} else {
@@ -389,6 +420,15 @@ func (a *application) subtitleMode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, a.subtitles.snapshot())
+}
+
+func (a *application) platformStatus(w http.ResponseWriter, r *http.Request) {
+	platforms, err := a.subtitles.platforms(r.Context())
+	response := map[string]any{"platforms": platforms}
+	if err != nil {
+		response["error"] = err.Error()
+	}
+	writeJSON(w, http.StatusOK, response)
 }
 func (a *application) subtitleStop(w http.ResponseWriter, r *http.Request) {
 	if a.subtitles == nil {

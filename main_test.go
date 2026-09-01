@@ -1,11 +1,15 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"reflect"
 	"testing"
+	"time"
 )
 
 func TestWireGuardOnly(t *testing.T) {
@@ -18,6 +22,29 @@ func TestWireGuardOnly(t *testing.T) {
 		if err := wireGuardOnly(address); err == nil {
 			t.Fatalf("expected %s to be rejected", address)
 		}
+	}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (fn roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) { return fn(request) }
+
+func TestPlatformStatusUsesAuthenticatedStreamchatState(t *testing.T) {
+	controller := newSubtitleController(subtitleConfig{APIURL: "https://streamchat.invalid", Password: "secret"})
+	controller.http = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		_, password, ok := request.BasicAuth()
+		if request.URL.Path != "/api/state" || !ok || password != "secret" {
+			t.Fatalf("unexpected request: %s auth=%v", request.URL, ok)
+		}
+		body := `{"stream":{"channels":{"twitch":{"live":true,"available":true,"viewer_count":4},"kick":{"live":false,"available":true},"youtube":{"live":true,"available":true}}}}`
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(bytes.NewBufferString(body)), Header: make(http.Header)}, nil
+	})}
+	platforms, err := controller.platforms(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !platforms["twitch"].Live || platforms["kick"].Live || !platforms["youtube"].Available || platforms["twitch"].ViewerCount != 4 {
+		t.Fatalf("platforms=%+v", platforms)
 	}
 }
 
@@ -51,6 +78,9 @@ func TestLocalModeUsesInstalledControllerAndStopsBeforeModeChange(t *testing.T) 
 	}
 	if controller.snapshot()["state"] != "running" {
 		t.Fatalf("snapshot=%v", controller.snapshot())
+	}
+	if started, ok := controller.snapshot()["started_at"].(time.Time); !ok || started.IsZero() {
+		t.Fatalf("missing running uptime origin: %v", controller.snapshot())
 	}
 	if err := controller.setMode(context.Background(), "remote"); err != nil {
 		t.Fatal(err)
