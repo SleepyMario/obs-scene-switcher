@@ -121,6 +121,24 @@ func TestSubtitleOutputIsPrivateAndAtomicallyReplaced(t *testing.T) {
 	}
 }
 
+func TestCombineCaptionSuppressesDuplicateLanguageLines(t *testing.T) {
+	tests := []struct {
+		name, original, english, chinese, want string
+	}{
+		{"three languages", "Goedemorgen", "Good morning", "早上好", "Goedemorgen\nGood morning\n早上好"},
+		{"English original", "Good morning", "", "早上好", "Good morning\n早上好"},
+		{"Chinese original", "早上好", "Good morning", "", "早上好\nGood morning"},
+		{"defensive duplicate", "Good morning", "Good morning", "早上好", "Good morning\n早上好"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := combineCaption(test.original, test.english, test.chinese); got != test.want {
+				t.Fatalf("caption=%q want=%q", got, test.want)
+			}
+		})
+	}
+}
+
 func TestOBSAuthentication(t *testing.T) {
 	got := obsAuthentication("password", "salt", "challenge")
 	const want = "zTM5ki6L2vVvBQiTG9ckH1Lh64AbnCf6XZ226UmnkIA="

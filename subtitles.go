@@ -97,7 +97,12 @@ func runSubtitleSender(ctx context.Context, cfg subtitleConfig, workerURL, token
 				errorsCh <- readErr
 				return
 			}
-			var event struct{ Type, Original, English string }
+			var event struct {
+				Type              string `json:"type"`
+				Original          string `json:"original"`
+				English           string `json:"english"`
+				SimplifiedChinese string `json:"simplified_chinese"`
+			}
 			if json.Unmarshal(payload, &event) != nil {
 				continue
 			}
@@ -120,10 +125,15 @@ func runSubtitleSender(ctx context.Context, cfg subtitleConfig, workerURL, token
 				errorsCh <- err
 				return
 			}
-			combined := strings.TrimSpace(event.Original)
-			if english != "" {
-				combined += "\n" + english
+			chinese := strings.TrimSpace(event.SimplifiedChinese)
+			if chinese == strings.TrimSpace(event.Original) || chinese == english {
+				chinese = ""
 			}
+			if err := atomicText(cfg.ChineseOutput, chinese); err != nil {
+				errorsCh <- err
+				return
+			}
+			combined := combineCaption(event.Original, english, chinese)
 			if err := atomicText(cfg.CombinedOutput, combined); err != nil {
 				errorsCh <- err
 				return
@@ -138,6 +148,27 @@ func runSubtitleSender(ctx context.Context, cfg subtitleConfig, workerURL, token
 		closeConnection()
 		return runErr
 	}
+}
+
+func combineCaption(original, english, chinese string) string {
+	lines := make([]string, 0, 3)
+	for _, line := range []string{original, english, chinese} {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		duplicate := false
+		for _, existing := range lines {
+			if line == existing {
+				duplicate = true
+				break
+			}
+		}
+		if !duplicate {
+			lines = append(lines, line)
+		}
+	}
+	return strings.Join(lines, "\n")
 }
 
 func atomicText(path, value string) error {
@@ -171,5 +202,6 @@ func atomicText(path, value string) error {
 func clearSubtitleOutputs(cfg subtitleConfig) {
 	_ = atomicText(cfg.OriginalOutput, "")
 	_ = atomicText(cfg.EnglishOutput, "")
+	_ = atomicText(cfg.ChineseOutput, "")
 	_ = atomicText(cfg.CombinedOutput, "")
 }

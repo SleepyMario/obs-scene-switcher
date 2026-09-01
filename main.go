@@ -38,7 +38,8 @@ func main() {
 	subtitleSource := flag.String("subtitle-source", os.Getenv("STREAMCHAT_SUBTITLE_SOURCE"), "stable PipeWire/Pulse microphone source")
 	subtitleOriginal := flag.String("subtitle-original-output", os.ExpandEnv("$HOME/.cache/language-subtitles/original.txt"), "OBS original-language text file")
 	subtitleEnglish := flag.String("subtitle-english-output", os.ExpandEnv("$HOME/.cache/language-subtitles/english.txt"), "OBS English text file")
-	subtitleCombined := flag.String("subtitle-combined-output", os.ExpandEnv("$HOME/.cache/language-subtitles/current.txt"), "existing two-line OBS subtitle text file")
+	subtitleChinese := flag.String("subtitle-chinese-output", os.ExpandEnv("$HOME/.cache/language-subtitles/chinese.txt"), "OBS Simplified Chinese text file")
+	subtitleCombined := flag.String("subtitle-combined-output", os.ExpandEnv("$HOME/.cache/language-subtitles/current.txt"), "existing combined OBS subtitle text file")
 	subtitleModePath := flag.String("subtitle-mode-path", os.ExpandEnv("$HOME/.config/obs-scene-switcher/subtitle-mode"), "persistent local/remote subtitle selection")
 	subtitleLocalCommand := flag.String("subtitle-local-command", os.ExpandEnv("$HOME/bin/subtitles"), "installed local subtitle controller")
 	flag.Parse()
@@ -47,7 +48,7 @@ func main() {
 		log.Fatal(err)
 	}
 	app := &application{obs: &obsClient{url: *obsURL, configPath: *obsConfig, timeout: 4 * time.Second}}
-	app.subtitles = newSubtitleController(subtitleConfig{APIURL: *subtitleAPI, Password: os.Getenv(*subtitlePasswordEnv), Source: *subtitleSource, OriginalOutput: *subtitleOriginal, EnglishOutput: *subtitleEnglish, CombinedOutput: *subtitleCombined, ModePath: *subtitleModePath, LocalCommand: *subtitleLocalCommand})
+	app.subtitles = newSubtitleController(subtitleConfig{APIURL: *subtitleAPI, Password: os.Getenv(*subtitlePasswordEnv), Source: *subtitleSource, OriginalOutput: *subtitleOriginal, EnglishOutput: *subtitleEnglish, ChineseOutput: *subtitleChinese, CombinedOutput: *subtitleCombined, ModePath: *subtitleModePath, LocalCommand: *subtitleLocalCommand})
 	webRoot, err := fs.Sub(webFiles, "web")
 	if err != nil {
 		log.Fatal(err)
@@ -92,8 +93,8 @@ func main() {
 }
 
 type subtitleConfig struct {
-	APIURL, Password, Source, OriginalOutput, EnglishOutput, CombinedOutput string
-	ModePath, LocalCommand                                                  string
+	APIURL, Password, Source, OriginalOutput, EnglishOutput, ChineseOutput, CombinedOutput string
+	ModePath, LocalCommand                                                                 string
 }
 
 type subtitleController struct {

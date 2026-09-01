@@ -38,8 +38,9 @@ The default output files are:
 
     ~/.cache/language-subtitles/original.txt
     ~/.cache/language-subtitles/english.txt
+    ~/.cache/language-subtitles/chinese.txt
 
-For compatibility with the existing OBS subtitle sources, the controller also writes the combined two-line result to `~/.cache/language-subtitles/current.txt`.
+For compatibility with the existing OBS subtitle source, the controller also writes the combined result to `~/.cache/language-subtitles/current.txt`: original speech, English, then Simplified Chinese. English or Chinese originals suppress their duplicate translation line, so those cases use two lines.
 
 The same operation is available locally after installing `/home/ashwin/bin/stream-subtitles`:
 
