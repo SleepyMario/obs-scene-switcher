@@ -1,8 +1,10 @@
 package main
 
 import (
+	"context"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 )
 
@@ -16,6 +18,48 @@ func TestWireGuardOnly(t *testing.T) {
 		if err := wireGuardOnly(address); err == nil {
 			t.Fatalf("expected %s to be rejected", address)
 		}
+	}
+}
+
+func TestSubtitleModeIsPrivateAndPersistent(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "controller", "subtitle-mode")
+	if err := saveSubtitleMode(path, "local"); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil || string(data) != "local\n" {
+		t.Fatalf("mode=%q err=%v", data, err)
+	}
+	info, err := os.Stat(path)
+	if err != nil || info.Mode().Perm() != 0600 {
+		t.Fatalf("mode file permissions=%v err=%v", info.Mode().Perm(), err)
+	}
+	controller := newSubtitleController(subtitleConfig{ModePath: path})
+	if controller.mode != "local" {
+		t.Fatalf("loaded mode=%q", controller.mode)
+	}
+}
+
+func TestLocalModeUsesInstalledControllerAndStopsBeforeModeChange(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "subtitle-mode")
+	controller := newSubtitleController(subtitleConfig{ModePath: path, LocalCommand: "/unused"})
+	controller.mode = "local"
+	var actions []string
+	controller.local = func(_ context.Context, action string) error { actions = append(actions, action); return nil }
+	if err := controller.start(); err != nil {
+		t.Fatal(err)
+	}
+	if controller.snapshot()["state"] != "running" {
+		t.Fatalf("snapshot=%v", controller.snapshot())
+	}
+	if err := controller.setMode(context.Background(), "remote"); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(actions, []string{"start", "off"}) {
+		t.Fatalf("actions=%v", actions)
+	}
+	if controller.snapshot()["mode"] != "remote" || controller.snapshot()["state"] != "idle" {
+		t.Fatalf("snapshot=%v", controller.snapshot())
 	}
 }
 

@@ -5,14 +5,20 @@ controller="${STREAM_SUBTITLE_CONTROLLER:-http://10.77.0.2:8798}"
 action="${1:-status}"
 
 case "$action" in
-  start|stop)
-    response="$(curl --fail-with-body --silent --show-error --request POST "${controller}/api/subtitles/${action}")"
+  start|on)
+    response="$(curl --fail-with-body --silent --show-error --request POST "${controller}/api/subtitles/start")"
+    ;;
+  stop|off)
+    response="$(curl --fail-with-body --silent --show-error --request POST "${controller}/api/subtitles/stop")"
+    ;;
+  local|remote)
+    response="$(curl --fail-with-body --silent --show-error --request POST "${controller}/api/subtitles/mode/${action}")"
     ;;
   status)
     response="$(curl --fail-with-body --silent --show-error "${controller}/api/subtitles")"
     ;;
   *)
-    echo "Usage: stream-subtitles {start|status|stop}" >&2
+    echo "Usage: stream-subtitles {on|off|local|remote|status}" >&2
     exit 2
     ;;
 esac

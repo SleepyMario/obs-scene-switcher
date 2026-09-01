@@ -57,7 +57,11 @@ h2 { margin: .15rem 0 .4rem; font-size: 1.25rem; }
   background: linear-gradient(145deg, rgba(223,111,184,.16), rgba(255,255,255,.025));
 }
 .subtitle-card p { margin: 0; color: #cfc2d6; font-size: .84rem; }
-.subtitle-actions { display: grid; grid-template-columns: 1fr auto; gap: .65rem; }
+.subtitle-mode { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; padding: .3rem; border-radius: .9rem; background: rgba(0,0,0,.18); }
+.subtitle-mode button { min-height: 2.7rem; border: 0; border-radius: .7rem; background: transparent; color: #bba9c5; font-weight: 800; touch-action: manipulation; }
+.subtitle-mode button.selected { background: rgba(223,111,184,.3); color: #fff7fc; box-shadow: inset 0 0 0 1px rgba(240,166,215,.28); }
+.subtitle-mode button:disabled { opacity: .5; }
+.subtitle-actions { display: grid; }
 .subtitle-button {
   min-height: 3.25rem; padding: .75rem 1rem; border: 1px solid #69466f;
   border-radius: .9rem; color: #fff7fc; font-weight: 800; touch-action: manipulation;

@@ -32,7 +32,7 @@ The service remains available while OBS is closed; its UI reports `OBS unavailab
 
 ## Optional GPU subtitles
 
-Copy `subtitles.env.example` to `~/.config/obs-scene-switcher/subtitles.env`, set mode `0600`, and fill in the existing Streamchat bot GUI address/password plus a stable PipeWire/Pulse source name. The page then gains Start and Stop controls. Start asks Streamchat-bot for one temporary worker, waits while the model loads, and launches the local sender. Stop clears the two OBS text files and permanently deletes the worker.
+Copy `subtitles.env.example` to `~/.config/obs-scene-switcher/subtitles.env`, set mode `0600`, and fill in the existing Streamchat bot GUI address/password plus a stable PipeWire/Pulse source name. The phone page has independent on/off and local/remote controls. Remote is the normal VPS/RunPod route. Local starts the already-installed `~/bin/subtitles` service and is retained as an explicit fallback; it is never selected automatically. Changing engines stops the current engine and leaves subtitles off.
 
 The default output files are:
 
@@ -43,6 +43,8 @@ For compatibility with the existing OBS subtitle sources, the controller also wr
 
 The same operation is available locally after installing `/home/ashwin/bin/stream-subtitles`:
 
-    stream-subtitles start
+    stream-subtitles on
+    stream-subtitles off
+    stream-subtitles remote
+    stream-subtitles local
     stream-subtitles status
-    stream-subtitles stop

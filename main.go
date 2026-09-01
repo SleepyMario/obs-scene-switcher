@@ -12,7 +12,9 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
@@ -37,15 +39,15 @@ func main() {
 	subtitleOriginal := flag.String("subtitle-original-output", os.ExpandEnv("$HOME/.cache/language-subtitles/original.txt"), "OBS original-language text file")
 	subtitleEnglish := flag.String("subtitle-english-output", os.ExpandEnv("$HOME/.cache/language-subtitles/english.txt"), "OBS English text file")
 	subtitleCombined := flag.String("subtitle-combined-output", os.ExpandEnv("$HOME/.cache/language-subtitles/current.txt"), "existing two-line OBS subtitle text file")
+	subtitleModePath := flag.String("subtitle-mode-path", os.ExpandEnv("$HOME/.config/obs-scene-switcher/subtitle-mode"), "persistent local/remote subtitle selection")
+	subtitleLocalCommand := flag.String("subtitle-local-command", os.ExpandEnv("$HOME/bin/subtitles"), "installed local subtitle controller")
 	flag.Parse()
 
 	if err := wireGuardOnly(*listen); err != nil {
 		log.Fatal(err)
 	}
 	app := &application{obs: &obsClient{url: *obsURL, configPath: *obsConfig, timeout: 4 * time.Second}}
-	if *subtitleAPI != "" {
-		app.subtitles = newSubtitleController(subtitleConfig{APIURL: *subtitleAPI, Password: os.Getenv(*subtitlePasswordEnv), Source: *subtitleSource, OriginalOutput: *subtitleOriginal, EnglishOutput: *subtitleEnglish, CombinedOutput: *subtitleCombined})
-	}
+	app.subtitles = newSubtitleController(subtitleConfig{APIURL: *subtitleAPI, Password: os.Getenv(*subtitlePasswordEnv), Source: *subtitleSource, OriginalOutput: *subtitleOriginal, EnglishOutput: *subtitleEnglish, CombinedOutput: *subtitleCombined, ModePath: *subtitleModePath, LocalCommand: *subtitleLocalCommand})
 	webRoot, err := fs.Sub(webFiles, "web")
 	if err != nil {
 		log.Fatal(err)
@@ -57,6 +59,7 @@ func main() {
 	mux.HandleFunc("GET /api/subtitles", app.subtitleStatus)
 	mux.HandleFunc("POST /api/subtitles/start", app.subtitleStart)
 	mux.HandleFunc("POST /api/subtitles/stop", app.subtitleStop)
+	mux.HandleFunc("POST /api/subtitles/mode/{mode}", app.subtitleMode)
 	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	})
@@ -89,6 +92,7 @@ func main() {
 
 type subtitleConfig struct {
 	APIURL, Password, Source, OriginalOutput, EnglishOutput, CombinedOutput string
+	ModePath, LocalCommand                                                  string
 }
 
 type subtitleController struct {
@@ -97,8 +101,11 @@ type subtitleController struct {
 	mu      sync.Mutex
 	state   string
 	message string
+	mode    string
+	active  string
 	remote  map[string]any
 	cancel  context.CancelFunc
+	local   func(context.Context, string) error
 }
 
 type subtitleLease struct {
@@ -108,7 +115,52 @@ type subtitleLease struct {
 }
 
 func newSubtitleController(cfg subtitleConfig) *subtitleController {
-	return &subtitleController{cfg: cfg, http: &http.Client{Timeout: 35 * time.Second}, state: "idle"}
+	mode := "remote"
+	if saved, err := os.ReadFile(cfg.ModePath); err == nil && validSubtitleMode(strings.TrimSpace(string(saved))) {
+		mode = strings.TrimSpace(string(saved))
+	}
+	controller := &subtitleController{cfg: cfg, http: &http.Client{Timeout: 35 * time.Second}, state: "idle", mode: mode}
+	controller.local = func(ctx context.Context, action string) error {
+		if cfg.LocalCommand == "" {
+			return errors.New("local subtitle command is not configured")
+		}
+		if _, err := os.Stat(cfg.LocalCommand); err != nil {
+			return fmt.Errorf("local subtitles are unavailable: %w", err)
+		}
+		output, err := exec.CommandContext(ctx, cfg.LocalCommand, action).CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("local subtitles %s: %s: %w", action, strings.TrimSpace(string(output)), err)
+		}
+		return nil
+	}
+	return controller
+}
+
+func validSubtitleMode(mode string) bool { return mode == "local" || mode == "remote" }
+
+func saveSubtitleMode(path, mode string) error {
+	if path == "" || !validSubtitleMode(mode) {
+		return errors.New("invalid subtitle mode")
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		return err
+	}
+	temporary, err := os.CreateTemp(filepath.Dir(path), ".subtitle-mode-*.tmp")
+	if err != nil {
+		return err
+	}
+	name := temporary.Name()
+	defer os.Remove(name)
+	if err = temporary.Chmod(0600); err == nil {
+		_, err = temporary.WriteString(mode + "\n")
+	}
+	if closeErr := temporary.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		return err
+	}
+	return os.Rename(name, path)
 }
 
 func (s *subtitleController) request(ctx context.Context, method, path string, result any) error {
@@ -138,21 +190,40 @@ func (s *subtitleController) request(ctx context.Context, method, path string, r
 func (s *subtitleController) snapshot() map[string]any {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return map[string]any{"state": s.state, "message": s.message, "remote": s.remote, "source_configured": s.cfg.Source != ""}
+	return map[string]any{"state": s.state, "message": s.message, "mode": s.mode, "active_mode": s.active, "remote": s.remote, "source_configured": s.cfg.Source != "", "local_available": s.cfg.LocalCommand != ""}
 }
 
 func (s *subtitleController) start() error {
 	s.mu.Lock()
-	if s.cancel != nil {
+	if s.state == "starting" || s.state == "running" || s.state == "stopping" {
 		s.mu.Unlock()
 		return nil
 	}
-	if s.cfg.Source == "" {
+	mode := s.mode
+	if mode == "remote" && s.cfg.APIURL == "" {
+		s.mu.Unlock()
+		return errors.New("remote subtitles are not configured yet")
+	}
+	if mode == "remote" && s.cfg.Source == "" {
 		s.mu.Unlock()
 		return errors.New("subtitle microphone source is not configured")
 	}
+	if mode == "local" {
+		s.state, s.message, s.active = "starting", "Starting the local subtitle engine", "local"
+		s.mu.Unlock()
+		if err := s.local(context.Background(), "start"); err != nil {
+			s.mu.Lock()
+			s.state, s.message, s.active = "error", err.Error(), ""
+			s.mu.Unlock()
+			return err
+		}
+		s.mu.Lock()
+		s.state, s.message = "running", "Local subtitles are live"
+		s.mu.Unlock()
+		return nil
+	}
 	ctx, cancel := context.WithCancel(context.Background())
-	s.cancel, s.state, s.message = cancel, "starting", "Requesting a temporary GPU worker"
+	s.cancel, s.state, s.message, s.active = cancel, "starting", "Requesting a temporary GPU worker", "remote"
 	s.mu.Unlock()
 	go s.run(ctx)
 	return nil
@@ -212,7 +283,7 @@ func (s *subtitleController) run(ctx context.Context) {
 			if ctx.Err() == nil {
 				stopErr := s.remoteStop(context.Background())
 				s.mu.Lock()
-				s.cancel, s.remote = nil, nil
+				s.cancel, s.remote, s.active = nil, nil, ""
 				if stopErr != nil {
 					s.state, s.message = "error", stopErr.Error()
 				} else {
@@ -237,7 +308,7 @@ func (s *subtitleController) run(ctx context.Context) {
 
 func (s *subtitleController) fail(err error) {
 	s.mu.Lock()
-	s.state, s.message, s.cancel = "error", err.Error(), nil
+	s.state, s.message, s.cancel, s.active = "error", err.Error(), nil, ""
 	s.mu.Unlock()
 	clearSubtitleOutputs(s.cfg)
 	_ = s.remoteStop(context.Background())
@@ -251,30 +322,53 @@ func (s *subtitleController) remoteStop(ctx context.Context) error {
 
 func (s *subtitleController) stop(ctx context.Context) error {
 	s.mu.Lock()
+	if s.state == "idle" {
+		s.mu.Unlock()
+		clearSubtitleOutputs(s.cfg)
+		return nil
+	}
+	active := s.active
 	cancel := s.cancel
-	s.state, s.message = "stopping", "Stopping microphone and deleting GPU worker"
+	s.state, s.message = "stopping", "Stopping subtitles"
 	s.mu.Unlock()
 	if cancel != nil {
 		cancel()
 	}
-	err := s.remoteStop(ctx)
+	var err error
+	if active == "local" {
+		err = s.local(ctx, "off")
+	} else if active == "remote" {
+		err = s.remoteStop(ctx)
+	}
 	s.mu.Lock()
-	s.cancel, s.remote = nil, nil
+	s.cancel, s.remote, s.active = nil, nil, ""
 	if err != nil {
 		s.state, s.message = "error", err.Error()
 	} else {
-		s.state, s.message = "idle", "GPU subtitle worker is off"
+		s.state, s.message = "idle", "Subtitles are off"
 	}
 	s.mu.Unlock()
 	clearSubtitleOutputs(s.cfg)
 	return err
 }
 
-func (a *application) subtitleStatus(w http.ResponseWriter, r *http.Request) {
-	if a.subtitles == nil {
-		writeJSON(w, 200, map[string]any{"state": "disabled", "message": "GPU subtitles are not configured"})
-		return
+func (s *subtitleController) setMode(ctx context.Context, mode string) error {
+	if !validSubtitleMode(mode) {
+		return errors.New("subtitle mode must be local or remote")
 	}
+	if err := s.stop(ctx); err != nil {
+		return err
+	}
+	if err := saveSubtitleMode(s.cfg.ModePath, mode); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	s.mode, s.state, s.message = mode, "idle", "Subtitles are off"
+	s.mu.Unlock()
+	return nil
+}
+
+func (a *application) subtitleStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, a.subtitles.snapshot())
 }
 func (a *application) subtitleStart(w http.ResponseWriter, r *http.Request) {
@@ -287,6 +381,14 @@ func (a *application) subtitleStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 202, a.subtitles.snapshot())
+}
+
+func (a *application) subtitleMode(w http.ResponseWriter, r *http.Request) {
+	if err := a.subtitles.setMode(r.Context(), strings.TrimSpace(r.PathValue("mode"))); err != nil {
+		writeJSON(w, http.StatusConflict, map[string]any{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, a.subtitles.snapshot())
 }
 func (a *application) subtitleStop(w http.ResponseWriter, r *http.Request) {
 	if a.subtitles == nil {

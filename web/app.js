@@ -4,10 +4,11 @@ const dotElement = document.querySelector('#dot');
 const template = document.querySelector('#scene-template');
 const refreshButton = document.querySelector('#refresh');
 const subtitleStatus = document.querySelector('#subtitle-status');
-const subtitleStart = document.querySelector('#subtitle-start');
-const subtitleStop = document.querySelector('#subtitle-stop');
+const subtitleToggle = document.querySelector('#subtitle-toggle');
+const subtitleModes = [...document.querySelectorAll('[data-mode]')];
 let switching = false;
 let changingSubtitles = false;
+let subtitleState = 'idle';
 
 function setStatus(text, online) {
   statusElement.textContent = text;
@@ -64,21 +65,29 @@ async function loadSubtitleStatus() {
     const response = await fetch('/api/subtitles', { cache: 'no-store' });
     const data = await response.json();
     const state = data.state || 'unknown';
-    subtitleStatus.textContent = data.message || state;
-    subtitleStart.disabled = changingSubtitles || !['idle', 'error'].includes(state);
-    subtitleStop.disabled = changingSubtitles || ['idle', 'disabled'].includes(state);
+    subtitleState = state;
+    const mode = data.mode || 'remote';
+    subtitleStatus.textContent = `${mode === 'remote' ? 'VPS / RunPod' : 'This computer'} · ${data.message || state}`;
+    const isOn = ['starting', 'running', 'stopping'].includes(state);
+    subtitleToggle.textContent = isOn ? 'Turn subtitles off' : 'Turn subtitles on';
+    subtitleToggle.classList.toggle('stop', isOn);
+    subtitleToggle.classList.toggle('start', !isOn);
+    subtitleToggle.disabled = changingSubtitles || state === 'stopping';
+    for (const button of subtitleModes) {
+      button.classList.toggle('selected', button.dataset.mode === mode);
+      button.disabled = changingSubtitles;
+    }
   } catch (error) {
     subtitleStatus.textContent = `Subtitle controller unavailable · ${error.message}`;
-    subtitleStart.disabled = true;
-    subtitleStop.disabled = true;
+    subtitleToggle.disabled = true;
+    for (const button of subtitleModes) button.disabled = true;
   }
 }
 
 async function changeSubtitles(action) {
   if (changingSubtitles) return;
   changingSubtitles = true;
-  subtitleStart.disabled = true;
-  subtitleStop.disabled = true;
+  subtitleToggle.disabled = true;
   subtitleStatus.textContent = action === 'start' ? 'Starting GPU worker…' : 'Stopping and deleting GPU worker…';
   try {
     const response = await fetch(`/api/subtitles/${action}`, { method: 'POST' });
@@ -92,8 +101,24 @@ async function changeSubtitles(action) {
   }
 }
 
-subtitleStart.addEventListener('click', () => changeSubtitles('start'));
-subtitleStop.addEventListener('click', () => changeSubtitles('stop'));
+async function selectSubtitleMode(mode) {
+  if (changingSubtitles) return;
+  changingSubtitles = true;
+  subtitleStatus.textContent = `Selecting ${mode} subtitles…`;
+  try {
+    const response = await fetch(`/api/subtitles/mode/${mode}`, { method: 'POST' });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'mode change failed');
+  } catch (error) {
+    subtitleStatus.textContent = `Subtitle mode change failed · ${error.message}`;
+  } finally {
+    changingSubtitles = false;
+    await loadSubtitleStatus();
+  }
+}
+
+subtitleToggle.addEventListener('click', () => changeSubtitles(['starting', 'running', 'stopping'].includes(subtitleState) ? 'stop' : 'start'));
+for (const button of subtitleModes) button.addEventListener('click', () => selectSubtitleMode(button.dataset.mode));
 loadScenes();
 loadSubtitleStatus();
 setInterval(() => { if (!switching && !document.hidden) loadScenes({ quiet: true }); }, 2500);
