@@ -5,9 +5,16 @@ set -eu
 : "${IRL_OBS_CONTROL_URL:=http://10.77.0.2:8798/api/irl/input}"
 
 ffmpeg_pid=""
+irl_state=""
 
 set_irl_state() {
-	/usr/bin/curl -fsS --max-time 2 -X POST "$IRL_OBS_CONTROL_URL/$1" >/dev/null 2>&1 || :
+	requested_state=$1
+	if [ "$irl_state" = "$requested_state" ]; then
+		return
+	fi
+	if /usr/bin/curl -fsS --max-time 2 -X POST "$IRL_OBS_CONTROL_URL/$requested_state" >/dev/null 2>&1; then
+		irl_state=$requested_state
+	fi
 }
 
 cleanup() {
@@ -26,7 +33,7 @@ while :; do
 	/usr/bin/ffmpeg \
 		-nostdin \
 		-hide_banner \
-		-loglevel warning \
+		-loglevel quiet \
 		-i "$IRL_SRT_URL" \
 		-map 0:v:0 \
 		-map '0:a:0?' \
@@ -35,7 +42,7 @@ while :; do
 		-muxdelay 0 \
 		-muxpreload 0 \
 		-f mpegts \
-		'udp://127.0.0.1:10000?pkt_size=1316' &
+		'udp://127.0.0.1:10000?pkt_size=1316' 2>/dev/null &
 	ffmpeg_pid=$!
 
 	# A rejected SRT reader exits almost immediately when no publisher exists.

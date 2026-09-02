@@ -81,3 +81,8 @@ Its protected environment file remains at
 `~/.config/irl-srt-bridge/env`; `IRL_SRT_URL` is required and must not be
 committed. `IRL_OBS_CONTROL_URL` is optional and defaults to the controller on
 Slacktop's WireGuard address.
+
+The bridge retries the SRT reader quietly while no publisher exists, but it
+reports only real state transitions to the controller. An idle bridge therefore
+does not repeatedly open OBS WebSocket clients; one `live` report is sent on
+connection and one `offline` report is sent after disconnection.
