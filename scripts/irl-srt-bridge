@@ -1,0 +1,55 @@
+#!/bin/sh
+set -eu
+
+: "${IRL_SRT_URL:?IRL_SRT_URL is not configured}"
+: "${IRL_OBS_CONTROL_URL:=http://10.77.0.2:8798/api/irl/input}"
+
+ffmpeg_pid=""
+
+set_irl_state() {
+	/usr/bin/curl -fsS --max-time 2 -X POST "$IRL_OBS_CONTROL_URL/$1" >/dev/null 2>&1 || :
+}
+
+cleanup() {
+	if [ -n "$ffmpeg_pid" ]; then
+		kill "$ffmpeg_pid" 2>/dev/null || :
+	fi
+	set_irl_state offline
+	exit 0
+}
+
+trap cleanup HUP INT TERM
+
+set_irl_state offline
+
+while :; do
+	/usr/bin/ffmpeg \
+		-nostdin \
+		-hide_banner \
+		-loglevel warning \
+		-i "$IRL_SRT_URL" \
+		-map 0:v:0 \
+		-map '0:a:0?' \
+		-codec copy \
+		-mpegts_flags +resend_headers \
+		-muxdelay 0 \
+		-muxpreload 0 \
+		-f mpegts \
+		'udp://127.0.0.1:10000?pkt_size=1316' &
+	ffmpeg_pid=$!
+
+	# A rejected SRT reader exits almost immediately when no publisher exists.
+	# Staying alive for one second means the input is established and OBS can
+	# safely replace the BRB layer with the incoming video.
+	sleep 1
+	if kill -0 "$ffmpeg_pid" 2>/dev/null; then
+		set_irl_state live
+	fi
+	wait "$ffmpeg_pid" || :
+	ffmpeg_pid=""
+	set_irl_state offline
+
+	# No publisher is a normal idle state. Stay alive and retry without
+	# tripping systemd's rapid-restart protection.
+	sleep 3
+done

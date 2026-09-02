@@ -53,3 +53,23 @@ The same operation is available locally after installing `/home/ashwin/bin/strea
     stream-subtitles remote
     stream-subtitles local
     stream-subtitles status
+
+## IRL input visibility
+
+The local SRT bridge reports whether the GoPro input is live through
+`POST /api/irl/input/live` and `POST /api/irl/input/offline`. The controller
+shows or hides `VPS-MMTX` in `IRL - VPS` accordingly. This prevents OBS from
+leaving the final UDP frame frozen after the camera disconnects; the existing
+BRB layer underneath is revealed instead.
+
+Install the tracked bridge and user service with:
+
+    install -Dm755 scripts/irl-srt-bridge ~/bin/irl-srt-bridge
+    install -Dm644 systemd/irl-srt-bridge.service ~/.config/systemd/user/irl-srt-bridge.service
+    systemctl --user daemon-reload
+    systemctl --user enable --now irl-srt-bridge.service
+
+Its protected environment file remains at
+`~/.config/irl-srt-bridge/env`; `IRL_SRT_URL` is required and must not be
+committed. `IRL_OBS_CONTROL_URL` is optional and defaults to the controller on
+Slacktop's WireGuard address.

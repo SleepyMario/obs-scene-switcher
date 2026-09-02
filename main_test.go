@@ -25,6 +25,18 @@ func TestWireGuardOnly(t *testing.T) {
 	}
 }
 
+func TestIRLInputVisibilityStates(t *testing.T) {
+	for state, want := range map[string]bool{"live": true, "offline": false} {
+		got, err := irlInputVisible(state)
+		if err != nil || got != want {
+			t.Fatalf("state=%q visible=%v err=%v", state, got, err)
+		}
+	}
+	if _, err := irlInputVisible("stale"); err == nil {
+		t.Fatal("expected an invalid IRL input state to fail")
+	}
+}
+
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (fn roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) { return fn(request) }

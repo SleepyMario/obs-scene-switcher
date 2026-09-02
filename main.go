@@ -57,6 +57,7 @@ func main() {
 	mux.Handle("GET /", http.FileServer(http.FS(webRoot)))
 	mux.HandleFunc("GET /api/scenes", app.getScenes)
 	mux.HandleFunc("POST /api/scenes/{scene}", app.switchScene)
+	mux.HandleFunc("POST /api/irl/input/{state}", app.setIRLInputState)
 	mux.HandleFunc("GET /api/subtitles", app.subtitleStatus)
 	mux.HandleFunc("POST /api/subtitles/start", app.subtitleStart)
 	mux.HandleFunc("POST /api/subtitles/stop", app.subtitleStop)
@@ -484,6 +485,30 @@ func (a *application) switchScene(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "current": scene})
+}
+
+func irlInputVisible(state string) (bool, error) {
+	switch state {
+	case "live":
+		return true, nil
+	case "offline":
+		return false, nil
+	default:
+		return false, fmt.Errorf("invalid IRL input state %q", state)
+	}
+}
+
+func (a *application) setIRLInputState(w http.ResponseWriter, r *http.Request) {
+	visible, err := irlInputVisible(strings.TrimSpace(r.PathValue("state")))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+		return
+	}
+	if err := a.obs.setSceneItemEnabled(r.Context(), "IRL - VPS", "VPS-MMTX", visible); err != nil {
+		writeJSON(w, http.StatusBadGateway, map[string]any{"error": "IRL source visibility failed", "detail": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "state": r.PathValue("state"), "visible": visible})
 }
 
 func securityHeaders(next http.Handler) http.Handler {

@@ -72,6 +72,31 @@ func (c *obsClient) switchScene(ctx context.Context, scene string) error {
 	return err
 }
 
+func (c *obsClient) setSceneItemEnabled(ctx context.Context, scene, source string, enabled bool) error {
+	response, err := c.request(ctx, "GetSceneItemId", map[string]string{
+		"sceneName":  scene,
+		"sourceName": source,
+	})
+	if err != nil {
+		return err
+	}
+	var item struct {
+		ID int `json:"sceneItemId"`
+	}
+	if err := json.Unmarshal(response, &item); err != nil {
+		return fmt.Errorf("decode OBS scene item: %w", err)
+	}
+	if item.ID == 0 {
+		return fmt.Errorf("OBS scene item %q was not found in %q", source, scene)
+	}
+	_, err = c.request(ctx, "SetSceneItemEnabled", map[string]any{
+		"sceneName":        scene,
+		"sceneItemId":      item.ID,
+		"sceneItemEnabled": enabled,
+	})
+	return err
+}
+
 func (c *obsClient) request(parent context.Context, requestType string, data any) (json.RawMessage, error) {
 	ctx, cancel := context.WithTimeout(parent, c.timeout)
 	defer cancel()
