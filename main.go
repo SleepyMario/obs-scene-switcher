@@ -204,16 +204,25 @@ func (s *subtitleController) platforms(ctx context.Context) (map[string]platform
 		return platforms, errors.New("Streamchat VPS status is not configured")
 	}
 	var state struct {
-		Stream struct {
-			Channels map[string]platformIndicator `json:"channels"`
-		} `json:"stream"`
+		Channels map[string]platformIndicator `json:"channels"`
+		Channel  struct {
+			Platform string `json:"platform"`
+			platformIndicator
+		} `json:"channel"`
 	}
 	if err := s.request(ctx, http.MethodGet, "/api/state", &state); err != nil {
 		return platforms, err
 	}
 	for name := range platforms {
-		if status, ok := state.Stream.Channels[name]; ok {
+		if status, ok := state.Channels[name]; ok {
 			platforms[name] = status
+		}
+	}
+	// Keep one-version deployment compatibility with older Streamchat servers,
+	// which exposed only the selected canonical channel.
+	if len(state.Channels) == 0 && state.Channel.Platform != "" {
+		if _, ok := platforms[state.Channel.Platform]; ok {
+			platforms[state.Channel.Platform] = state.Channel.platformIndicator
 		}
 	}
 	return platforms, nil

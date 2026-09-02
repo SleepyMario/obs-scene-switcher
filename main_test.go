@@ -36,7 +36,7 @@ func TestPlatformStatusUsesAuthenticatedStreamchatState(t *testing.T) {
 		if request.URL.Path != "/api/state" || !ok || password != "secret" {
 			t.Fatalf("unexpected request: %s auth=%v", request.URL, ok)
 		}
-		body := `{"stream":{"channels":{"twitch":{"live":true,"available":true,"viewer_count":4},"kick":{"live":false,"available":true},"youtube":{"live":true,"available":true}}}}`
+		body := `{"channels":{"twitch":{"live":true,"available":true,"viewer_count":4},"kick":{"live":false,"available":true},"youtube":{"live":true,"available":true}}}`
 		return &http.Response{StatusCode: 200, Body: io.NopCloser(bytes.NewBufferString(body)), Header: make(http.Header)}, nil
 	})}
 	platforms, err := controller.platforms(context.Background())
@@ -45,6 +45,18 @@ func TestPlatformStatusUsesAuthenticatedStreamchatState(t *testing.T) {
 	}
 	if !platforms["twitch"].Live || platforms["kick"].Live || !platforms["youtube"].Available || platforms["twitch"].ViewerCount != 4 {
 		t.Fatalf("platforms=%+v", platforms)
+	}
+}
+
+func TestPlatformStatusAcceptsOlderCanonicalChannelState(t *testing.T) {
+	controller := newSubtitleController(subtitleConfig{APIURL: "https://streamchat.invalid", Password: "secret"})
+	controller.http = &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		body := `{"channel":{"platform":"twitch","live":true,"available":true,"viewer_count":4}}`
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(bytes.NewBufferString(body)), Header: make(http.Header)}, nil
+	})}
+	platforms, err := controller.platforms(context.Background())
+	if err != nil || !platforms["twitch"].Live || platforms["kick"].Available {
+		t.Fatalf("platforms=%+v err=%v", platforms, err)
 	}
 }
 
