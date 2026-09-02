@@ -58,9 +58,17 @@ The same operation is available locally after installing `/home/ashwin/bin/strea
 
 The local SRT bridge reports whether the GoPro input is live through
 `POST /api/irl/input/live` and `POST /api/irl/input/offline`. The controller
-shows or hides `VPS-MMTX` in `IRL - VPS` accordingly. This prevents OBS from
-leaving the final UDP frame frozen after the camera disconnects; the existing
-BRB layer underneath is revealed instead.
+shows or hides `VPS-MMTX` and the selected GPS layout in `IRL - VPS`
+accordingly. This prevents OBS from leaving the final UDP frame frozen after
+the camera disconnects; the existing BRB layer underneath is revealed instead.
+
+The controller supports `IRL GPS Dashboard`, `IRL GPS Minimal`, and `IRL GPS
+Full`. On disconnect it remembers which one was enabled and hides all three.
+On reconnect it restores only the remembered layout, so layouts cannot overlap.
+Each browser source is configured to shut down while hidden and restart when
+active. Consequently, its RealtimeIRL pull connection exists only while the
+GoPro SRT input is live. The lightweight local static file server remains
+enabled so the browser source is immediately available on the next connection.
 
 Install the tracked bridge and user service with:
 

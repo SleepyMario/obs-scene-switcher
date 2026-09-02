@@ -25,9 +25,15 @@ import (
 var webFiles embed.FS
 
 type application struct {
-	obs       *obsClient
-	subtitles *subtitleController
+	obs          *obsClient
+	subtitles    *subtitleController
+	irlMu        sync.Mutex
+	irlGPSLayout string
 }
+
+const irlScene = "IRL - VPS"
+
+var irlGPSLayouts = []string{"IRL GPS Dashboard", "IRL GPS Minimal", "IRL GPS Full"}
 
 func main() {
 	listen := flag.String("listen", "10.77.0.2:8798", "WireGuard address to serve")
@@ -47,7 +53,10 @@ func main() {
 	if err := wireGuardOnly(*listen); err != nil {
 		log.Fatal(err)
 	}
-	app := &application{obs: &obsClient{url: *obsURL, configPath: *obsConfig, timeout: 4 * time.Second}}
+	app := &application{
+		obs:          &obsClient{url: *obsURL, configPath: *obsConfig, timeout: 4 * time.Second},
+		irlGPSLayout: irlGPSLayouts[0],
+	}
 	app.subtitles = newSubtitleController(subtitleConfig{APIURL: *subtitleAPI, Password: os.Getenv(*subtitlePasswordEnv), Source: *subtitleSource, OriginalOutput: *subtitleOriginal, EnglishOutput: *subtitleEnglish, ChineseOutput: *subtitleChinese, CombinedOutput: *subtitleCombined, ModePath: *subtitleModePath, LocalCommand: *subtitleLocalCommand})
 	webRoot, err := fs.Sub(webFiles, "web")
 	if err != nil {
@@ -499,16 +508,66 @@ func irlInputVisible(state string) (bool, error) {
 }
 
 func (a *application) setIRLInputState(w http.ResponseWriter, r *http.Request) {
-	visible, err := irlInputVisible(strings.TrimSpace(r.PathValue("state")))
+	state := strings.TrimSpace(r.PathValue("state"))
+	visible, err := irlInputVisible(state)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
 		return
 	}
-	if err := a.obs.setSceneItemEnabled(r.Context(), "IRL - VPS", "VPS-MMTX", visible); err != nil {
-		writeJSON(w, http.StatusBadGateway, map[string]any{"error": "IRL source visibility failed", "detail": err.Error()})
+
+	a.irlMu.Lock()
+	defer a.irlMu.Unlock()
+	var failures []string
+
+	// Capture the currently selected layout before hiding all three. Repeated
+	// offline reports leave the last known selection intact.
+	if !visible {
+		for _, source := range irlGPSLayouts {
+			enabled, err := a.obs.sceneItemEnabled(r.Context(), irlScene, source)
+			if err != nil {
+				failures = append(failures, fmt.Sprintf("read %s: %v", source, err))
+				continue
+			}
+			if enabled {
+				a.irlGPSLayout = source
+			}
+		}
+	}
+
+	// The static file server is intentionally left running. Shutting down each
+	// browser source when hidden closes the actual RealtimeIRL connection, while
+	// restarting on activation gives every GoPro session a clean pull.
+	for _, source := range irlGPSLayouts {
+		if err := a.obs.setInputSettings(r.Context(), source, map[string]any{
+			"shutdown":            true,
+			"restart_when_active": true,
+		}); err != nil {
+			failures = append(failures, fmt.Sprintf("configure %s: %v", source, err))
+		}
+	}
+
+	if err := a.obs.setSceneItemEnabled(r.Context(), irlScene, "VPS-MMTX", visible); err != nil {
+		failures = append(failures, fmt.Sprintf("VPS-MMTX: %v", err))
+	}
+	for _, source := range irlGPSLayouts {
+		enabled := visible && source == a.irlGPSLayout
+		if err := a.obs.setSceneItemEnabled(r.Context(), irlScene, source, enabled); err != nil {
+			failures = append(failures, fmt.Sprintf("%s: %v", source, err))
+		}
+	}
+	if len(failures) != 0 {
+		writeJSON(w, http.StatusBadGateway, map[string]any{
+			"error":  "IRL source visibility failed",
+			"detail": strings.Join(failures, "; "),
+		})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "state": r.PathValue("state"), "visible": visible})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ok":      true,
+		"state":   state,
+		"visible": visible,
+		"gps":     a.irlGPSLayout,
+	})
 }
 
 func securityHeaders(next http.Handler) http.Handler {

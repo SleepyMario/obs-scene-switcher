@@ -73,26 +73,64 @@ func (c *obsClient) switchScene(ctx context.Context, scene string) error {
 }
 
 func (c *obsClient) setSceneItemEnabled(ctx context.Context, scene, source string, enabled bool) error {
+	itemID, err := c.sceneItemID(ctx, scene, source)
+	if err != nil {
+		return err
+	}
+	_, err = c.request(ctx, "SetSceneItemEnabled", map[string]any{
+		"sceneName":        scene,
+		"sceneItemId":      itemID,
+		"sceneItemEnabled": enabled,
+	})
+	return err
+}
+
+func (c *obsClient) sceneItemEnabled(ctx context.Context, scene, source string) (bool, error) {
+	itemID, err := c.sceneItemID(ctx, scene, source)
+	if err != nil {
+		return false, err
+	}
+	response, err := c.request(ctx, "GetSceneItemEnabled", map[string]any{
+		"sceneName":   scene,
+		"sceneItemId": itemID,
+	})
+	if err != nil {
+		return false, err
+	}
+	var item struct {
+		Enabled bool `json:"sceneItemEnabled"`
+	}
+	if err := json.Unmarshal(response, &item); err != nil {
+		return false, fmt.Errorf("decode OBS scene item state: %w", err)
+	}
+	return item.Enabled, nil
+}
+
+func (c *obsClient) sceneItemID(ctx context.Context, scene, source string) (int, error) {
 	response, err := c.request(ctx, "GetSceneItemId", map[string]string{
 		"sceneName":  scene,
 		"sourceName": source,
 	})
 	if err != nil {
-		return err
+		return 0, err
 	}
 	var item struct {
 		ID int `json:"sceneItemId"`
 	}
 	if err := json.Unmarshal(response, &item); err != nil {
-		return fmt.Errorf("decode OBS scene item: %w", err)
+		return 0, fmt.Errorf("decode OBS scene item: %w", err)
 	}
 	if item.ID == 0 {
-		return fmt.Errorf("OBS scene item %q was not found in %q", source, scene)
+		return 0, fmt.Errorf("OBS scene item %q was not found in %q", source, scene)
 	}
-	_, err = c.request(ctx, "SetSceneItemEnabled", map[string]any{
-		"sceneName":        scene,
-		"sceneItemId":      item.ID,
-		"sceneItemEnabled": enabled,
+	return item.ID, nil
+}
+
+func (c *obsClient) setInputSettings(ctx context.Context, input string, settings map[string]any) error {
+	_, err := c.request(ctx, "SetInputSettings", map[string]any{
+		"inputName":     input,
+		"inputSettings": settings,
+		"overlay":       true,
 	})
 	return err
 }
