@@ -31,7 +31,7 @@ type application struct {
 
 func main() {
 	listen := flag.String("listen", "10.77.0.2:8798", "WireGuard address to serve")
-	obsURL := flag.String("obs-url", "ws://127.0.0.1:4455", "OBS WebSocket URL")
+	obsURL := flag.String("obs-url", "ws://10.77.0.2:4455", "OBS WebSocket URL")
 	obsConfig := flag.String("obs-config", os.ExpandEnv("$HOME/.config/obs-studio/plugin_config/obs-websocket/config.json"), "OBS WebSocket config containing the local password")
 	subtitleAPI := flag.String("subtitle-api", os.Getenv("STREAMCHAT_SUBTITLE_API_URL"), "Streamchat bot API base URL")
 	subtitlePasswordEnv := flag.String("subtitle-password-env", "STREAMCHAT_BOT_GUI_PASSWORD", "environment variable containing the Streamchat bot GUI password")

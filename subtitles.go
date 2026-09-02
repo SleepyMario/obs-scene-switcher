@@ -185,10 +185,10 @@ func atomicText(path, value string) error {
 	name := temporary.Name()
 	defer os.Remove(name)
 	if err = temporary.Chmod(0600); err == nil {
-		if value != "" {
-			value += "\n"
-		}
-		_, err = temporary.WriteString(value)
+		// OBS's FreeType text source can retain its previous contents when a
+		// watched file is replaced by a zero-byte file. A newline is visually
+		// empty but reliably tells OBS to clear the stale subtitle row.
+		_, err = temporary.WriteString(value + "\n")
 	}
 	if closeErr := temporary.Close(); err == nil {
 		err = closeErr

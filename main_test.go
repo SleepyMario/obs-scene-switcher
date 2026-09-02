@@ -116,7 +116,7 @@ func TestSubtitleOutputIsPrivateAndAtomicallyReplaced(t *testing.T) {
 		t.Fatal(err)
 	}
 	data, err = os.ReadFile(path)
-	if err != nil || len(data) != 0 {
+	if err != nil || string(data) != "\n" {
 		t.Fatalf("caption was not cleared: %q %v", data, err)
 	}
 }

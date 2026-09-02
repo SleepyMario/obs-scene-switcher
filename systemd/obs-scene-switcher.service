@@ -6,7 +6,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 EnvironmentFile=-%h/.config/obs-scene-switcher/subtitles.env
-ExecStart=%h/.local/bin/obs-scene-switcher --listen 10.77.0.2:8798
+ExecStart=%h/.local/bin/obs-scene-switcher --listen 10.77.0.2:8798 --obs-url ws://10.77.0.2:4455
 Restart=on-failure
 RestartSec=3
 NoNewPrivileges=true
