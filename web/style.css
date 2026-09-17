@@ -69,4 +69,8 @@ h2 { margin: .15rem 0 .4rem; font-size: 1.25rem; }
 .subtitle-button.start { background: linear-gradient(145deg, #b95899, #793b84); }
 .subtitle-button.stop { background: rgba(255,255,255,.06); }
 .subtitle-button:disabled { opacity: .42; }
+.obs-controls { margin: 0 0 1.2rem; }
+.obs-actions { display: grid; grid-template-columns: 2fr 1fr; gap: .65rem; }
+.obs-controls p { color: #cfc2d6; font-size: .85rem; margin: .6rem .2rem 0; }
+.obs-controls p:empty { display: none; }
 @media (min-width: 38rem) { .scenes { grid-template-columns: repeat(3, minmax(0, 1fr)); } }

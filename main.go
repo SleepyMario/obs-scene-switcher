@@ -29,6 +29,7 @@ type application struct {
 	subtitles    *subtitleController
 	irlMu        sync.Mutex
 	irlGPSLayout string
+	lifecycle    *obsLifecycle
 }
 
 const irlScene = "IRL - VPS"
@@ -36,6 +37,7 @@ const irlScene = "IRL - VPS"
 var irlGPSLayouts = []string{"IRL GPS Dashboard", "IRL GPS Minimal", "IRL GPS Full"}
 
 func main() {
+	checkLaunch := flag.Bool("check-obs-launch", false, "validate phone OBS launch without starting it")
 	listen := flag.String("listen", "10.77.0.2:8798", "WireGuard address to serve")
 	obsURL := flag.String("obs-url", "ws://10.77.0.2:4455", "OBS WebSocket URL")
 	obsConfig := flag.String("obs-config", os.ExpandEnv("$HOME/.config/obs-studio/plugin_config/obs-websocket/config.json"), "OBS WebSocket config containing the local password")
@@ -49,6 +51,12 @@ func main() {
 	subtitleModePath := flag.String("subtitle-mode-path", os.ExpandEnv("$HOME/.config/obs-scene-switcher/subtitle-mode"), "persistent local/remote subtitle selection")
 	subtitleLocalCommand := flag.String("subtitle-local-command", os.ExpandEnv("$HOME/bin/subtitles"), "installed local subtitle controller")
 	flag.Parse()
+	if *checkLaunch {
+		if err := checkOBSLaunch(); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
 
 	if err := wireGuardOnly(*listen); err != nil {
 		log.Fatal(err)
@@ -58,6 +66,7 @@ func main() {
 		irlGPSLayout: irlGPSLayouts[0],
 	}
 	app.subtitles = newSubtitleController(subtitleConfig{APIURL: *subtitleAPI, Password: os.Getenv(*subtitlePasswordEnv), Source: *subtitleSource, OriginalOutput: *subtitleOriginal, EnglishOutput: *subtitleEnglish, ChineseOutput: *subtitleChinese, CombinedOutput: *subtitleCombined, ModePath: *subtitleModePath, LocalCommand: *subtitleLocalCommand})
+	app.lifecycle = newOBSLifecycle(app.obs)
 	webRoot, err := fs.Sub(webFiles, "web")
 	if err != nil {
 		log.Fatal(err)
@@ -65,6 +74,8 @@ func main() {
 	mux := http.NewServeMux()
 	mux.Handle("GET /", http.FileServer(http.FS(webRoot)))
 	mux.HandleFunc("GET /api/scenes", app.getScenes)
+	mux.HandleFunc("GET /api/obs", app.lifecycle.status)
+	mux.HandleFunc("POST /api/obs/{action}", app.lifecycle.action)
 	mux.HandleFunc("POST /api/scenes/{scene}", app.switchScene)
 	mux.HandleFunc("POST /api/irl/input/{state}", app.setIRLInputState)
 	mux.HandleFunc("GET /api/subtitles", app.subtitleStatus)

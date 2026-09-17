@@ -8,13 +8,13 @@ A small phone-first remote for changing the current OBS program scene over the p
 - The installed service binds only to Slacktop's WireGuard address, `10.77.0.2:8798`.
 - The backend connects to OBS on Slacktop's WireGuard address, `10.77.0.2:4455`, and reads OBS's existing password locally.
 - The OBS password is never sent to or stored on the phone.
-- The UI exposes scene selection and an optional GPU-subtitle session control. It has no stream, recording, or shutdown controls.
+- The UI exposes scene selection and an optional GPU-subtitle session control. It can also launch/close the OBS application; it has no stream, recording, or computer-shutdown controls.
 - Subtitle provider credentials stay on the VPS. The temporary worker token is handled by the Slacktop backend and is never returned to the phone browser.
 - Microphone audio travels directly from Slacktop to the temporary worker, not through the VPS.
 
 ## Use
 
-Start OBS, enable the phone's existing WireGuard tunnel, and open:
+Enable the phone's existing WireGuard tunnel and open:
 
     http://10.77.0.2:8798
 
@@ -28,7 +28,16 @@ The scene list and current program scene are retrieved from OBS. The page refres
     systemctl --user daemon-reload
     systemctl --user enable --now obs-scene-switcher.service
 
-The service remains available while OBS is closed; its UI reports `OBS unavailable` until OBS starts.
+The service remains available while OBS is closed. **Start OBS** opens the Main collection in **Starting Soon**, using the current desktop session. An already-open OBS is left unchanged. **Stop OBS** asks for confirmation and requests a normal save-and-close only after checking that streaming, recording, replay buffer and virtual camera are idle. Unknown output state blocks closing. No forced termination is used.
+
+Install the on-demand launcher too (do not enable it at login):
+
+    install -Dm644 systemd/obs-phone.service ~/.config/systemd/user/obs-phone.service
+    systemctl --user daemon-reload
+
+The laptop must be awake with its graphical session logged in. The launcher retains the existing camera/audio settings as explicitly requested; it selects Starting Soon without starting streaming or recording. The controller remains in its existing read-only sandbox; the separate user unit gives OBS its usual desktop access. It uses the same Qt/Xwayland display settings as the local OBS desktop launcher.
+
+Application lifecycle endpoints are `GET /api/obs` and `POST /api/obs/start|stop`. POST requires `X-OBS-Control: 1` and rejects foreign Origin headers. Start is serialized and debounced, detects existing local OBS instances and validates the Starting Soon scene before launch. Stop uses the verified local user-owned process only. OBS 32.2.2 handles SIGINT through its normal save/close path; this was checked against [upstream source](https://github.com/obsproject/obs-studio/blob/32.2.2/frontend/OBSApp.cpp#L1749).
 
 The OBS endpoint is currently fixed to Slacktop's WireGuard address. A later
 controller update may expose this as a saved setting for Windows or another

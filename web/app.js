@@ -9,6 +9,51 @@ const subtitleModes = [...document.querySelectorAll('[data-mode]')];
 let switching = false;
 let changingSubtitles = false;
 let subtitleState = 'idle';
+const obsStart = document.querySelector('#obs-start');
+const obsStop = document.querySelector('#obs-stop');
+const obsState = document.querySelector('#obs-state');
+const obsResult = document.querySelector('#obs-action-result');
+let changingOBS = false;
+let obsProcessState = 'unknown';
+
+async function loadOBSStatus() {
+  try {
+    const response = await fetch('/api/obs', { cache: 'no-store' });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Status unavailable');
+    obsProcessState = data.state;
+    obsState.textContent = data.message;
+    obsStart.disabled = changingOBS || data.state !== 'stopped';
+    obsStop.disabled = changingOBS || data.state !== 'running';
+  } catch (error) {
+    obsState.textContent = error.message;
+    obsStart.disabled = obsStop.disabled = true;
+  }
+}
+
+async function controlOBS(action) {
+  if (changingOBS) return;
+  if (action === 'stop' && !window.confirm('Close OBS on the laptop? Active streaming or recording will block this.')) return;
+  changingOBS = true;
+  obsStart.disabled = obsStop.disabled = true;
+  obsResult.textContent = action === 'start' ? 'Opening OBS…' : 'Checking outputs before closing…';
+  try {
+    const response = await fetch(`/api/obs/${action}`, {
+      method: 'POST', headers: { 'X-OBS-Control': '1' },
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'OBS action failed');
+    obsResult.textContent = data.message;
+  } catch (error) {
+    obsResult.textContent = error.message;
+  } finally {
+    changingOBS = false;
+    await loadOBSStatus();
+    await loadScenes();
+  }
+}
+obsStart.addEventListener('click', () => controlOBS('start'));
+obsStop.addEventListener('click', () => controlOBS('stop'));
 
 function setStatus(text, online) {
   statusElement.textContent = text;
@@ -24,7 +69,7 @@ async function loadScenes({ quiet = false } = {}) {
     setStatus(`Live scene: ${data.current}`, true);
   } catch (error) {
     if (!quiet) scenesElement.replaceChildren();
-    setStatus(`OBS unavailable · ${error.message}`, false);
+    setStatus(obsProcessState === 'stopped' ? 'OBS is closed · ready to start' : 'Waiting for the OBS connection…', false);
   }
 }
 
@@ -120,6 +165,8 @@ async function selectSubtitleMode(mode) {
 subtitleToggle.addEventListener('click', () => changeSubtitles(['starting', 'running', 'stopping'].includes(subtitleState) ? 'stop' : 'start'));
 for (const button of subtitleModes) button.addEventListener('click', () => selectSubtitleMode(button.dataset.mode));
 loadScenes();
+loadOBSStatus();
+setInterval(() => { if (!changingOBS && !document.hidden) loadOBSStatus(); }, 2500);
 loadSubtitleStatus();
 setInterval(() => { if (!switching && !document.hidden) loadScenes({ quiet: true }); }, 2500);
 setInterval(() => { if (!changingSubtitles && !document.hidden) loadSubtitleStatus(); }, 5000);
