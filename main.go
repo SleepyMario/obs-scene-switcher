@@ -75,6 +75,7 @@ func main() {
 	mux.Handle("GET /", http.FileServer(http.FS(webRoot)))
 	mux.HandleFunc("GET /api/scenes", app.getScenes)
 	mux.HandleFunc("GET /api/preview", app.programPreview)
+	mux.HandleFunc("GET /api/chat", app.chatFeed)
 	mux.HandleFunc("GET /api/obs", app.lifecycle.status)
 	mux.HandleFunc("POST /api/obs/{action}", app.lifecycle.action)
 	mux.HandleFunc("POST /api/scenes/{scene}", app.switchScene)
@@ -461,6 +462,30 @@ func (a *application) platformStatus(w http.ResponseWriter, r *http.Request) {
 		response["error"] = err.Error()
 	}
 	writeJSON(w, http.StatusOK, response)
+}
+
+type phoneChatMessage struct {
+	ID                string `json:"id"`
+	Platform          string `json:"platform"`
+	Timestamp         string `json:"timestamp"`
+	AuthorDisplayName string `json:"author_display_name"`
+	Text              string `json:"text"`
+	EventType         string `json:"event_type"`
+}
+
+func (a *application) chatFeed(w http.ResponseWriter, r *http.Request) {
+	if a.subtitles == nil || a.subtitles.cfg.APIURL == "" {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "Streamchat is not configured"})
+		return
+	}
+	var feed struct {
+		RecentChat []phoneChatMessage `json:"recent_chat"`
+	}
+	if err := a.subtitles.request(r.Context(), http.MethodGet, "/api/overlay/chat", &feed); err != nil {
+		writeJSON(w, http.StatusBadGateway, map[string]any{"error": "Streamchat is unavailable"})
+		return
+	}
+	writeJSON(w, http.StatusOK, feed)
 }
 func (a *application) subtitleStop(w http.ResponseWriter, r *http.Request) {
 	if a.subtitles == nil {

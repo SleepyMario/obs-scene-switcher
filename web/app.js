@@ -19,12 +19,17 @@ const previewPanel = document.querySelector('#preview-panel');
 const previewImage = document.querySelector('#program-preview');
 const previewStatus = document.querySelector('#preview-status');
 const previewPlaceholder = document.querySelector('#preview-placeholder');
+const chatFeed = document.querySelector('#chat-feed');
+const chatStatus = document.querySelector('#chat-status');
+const chatPlaceholder = document.querySelector('#chat-placeholder');
 const pageViewport = document.querySelector('#page-viewport');
 const pageTrack = document.querySelector('#page-track');
 const pageTabs = [...document.querySelectorAll('[data-page]')];
 const pagePanels = [...document.querySelectorAll('[data-page-panel]')];
 let previewLoading = false;
 let previewObjectURL = '';
+let chatLoading = false;
+let renderedChatSignature = null;
 let activePage = 'controls';
 let swipeStartX = 0;
 let swipeStartY = 0;
@@ -40,7 +45,63 @@ function selectPage(page) {
     else tab.removeAttribute('aria-current');
   }
   for (const panel of pagePanels) panel.setAttribute('aria-hidden', String(panel.dataset.pagePanel !== page));
-  if (page === 'preview') loadPreview();
+  if (page === 'preview') {
+    loadPreview();
+    loadChat();
+  }
+}
+
+function renderChat(messages) {
+  const visible = (Array.isArray(messages) ? messages : [])
+    .filter(message => message && message.id && !['moderation', 'system'].includes(message.event_type))
+    .filter(message => !['botrix', 'kickbot'].includes((message.author_display_name || '').trim().toLowerCase()))
+    .slice(0, 30)
+    .reverse();
+  const signature = visible.map(message => message.id).join('\n');
+  if (signature === renderedChatSignature) return;
+  renderedChatSignature = signature;
+  if (!visible.length) {
+    chatFeed.replaceChildren(chatPlaceholder);
+    chatPlaceholder.textContent = 'Waiting for the first message.';
+    chatStatus.textContent = 'Connected';
+    return;
+  }
+  const fragment = document.createDocumentFragment();
+  for (const message of visible) {
+    const row = document.createElement('article');
+    const identity = document.createElement('div');
+    const platform = document.createElement('span');
+    const author = document.createElement('strong');
+    const text = document.createElement('p');
+    row.className = 'chat-message';
+    identity.className = 'chat-identity';
+    platform.className = `chat-platform ${message.platform || 'chat'}`;
+    platform.textContent = message.platform || 'chat';
+    author.textContent = message.author_display_name || 'Someone';
+    text.textContent = message.text || '';
+    identity.append(platform, author);
+    row.append(identity, text);
+    fragment.append(row);
+  }
+  chatFeed.replaceChildren(fragment);
+  chatFeed.scrollTop = chatFeed.scrollHeight;
+  chatStatus.textContent = `${visible.length} recent`;
+}
+
+async function loadChat() {
+  if (chatLoading || document.hidden || activePage !== 'preview') return;
+  chatLoading = true;
+  try {
+    const response = await fetch('/api/chat', { cache: 'no-store' });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Chat unavailable');
+    renderChat(data.recent_chat);
+  } catch (error) {
+    chatStatus.textContent = 'Unavailable';
+    if (!renderedChatSignature) chatPlaceholder.textContent = error.message;
+  } finally {
+    chatLoading = false;
+  }
 }
 
 function clearPreview(message) {
@@ -254,3 +315,4 @@ loadSubtitleStatus();
 setInterval(() => { if (!switching && !document.hidden) loadScenes({ quiet: true }); }, 2500);
 setInterval(() => { if (!changingSubtitles && !document.hidden) loadSubtitleStatus(); }, 5000);
 setInterval(loadPreview, 2500);
+setInterval(loadChat, 1000);

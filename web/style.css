@@ -103,4 +103,20 @@ h2 { margin: .15rem 0 .4rem; font-size: 1.25rem; }
 .preview-frame img { display: block; width: 100%; height: 100%; object-fit: contain; }
 .preview-frame img[hidden] { display: none; }
 .preview-frame p { margin: 0; padding: 1rem; color: #ae9bb8; font-size: .82rem; text-align: center; }
+.phone-chat {
+  margin: 0 0 1rem; overflow: hidden; border: 1px solid #4a3451; border-radius: 1.15rem;
+  background: rgba(12,8,17,.56);
+}
+.chat-heading { display: flex; align-items: center; justify-content: space-between; padding: .9rem 1rem; }
+.chat-heading small { color: #ae9bb8; font-size: .72rem; }
+.chat-feed { max-height: 22rem; overflow-y: auto; padding: 0 .75rem .75rem; overscroll-behavior: contain; }
+.chat-feed>p { margin: 0; padding: 1.2rem; color: #ae9bb8; text-align: center; }
+.chat-message { padding: .72rem .2rem; border-top: 1px solid #3a293f; }
+.chat-identity { display: flex; align-items: center; gap: .55rem; min-width: 0; }
+.chat-identity strong { overflow: hidden; color: #f8f2ff; font-size: .86rem; text-overflow: ellipsis; white-space: nowrap; }
+.chat-platform { flex: none; padding: .18rem .38rem; border-radius: .35rem; background: #596477; color: white; font-size: .58rem; font-weight: 900; text-transform: uppercase; }
+.chat-platform.twitch { background: #9146ff; }
+.chat-platform.kick { background: #53fc18; color: #081008; }
+.chat-platform.youtube { background: #ff0033; }
+.chat-message p { margin: .35rem 0 0; color: #cfc2d6; font-size: .84rem; line-height: 1.35; overflow-wrap: anywhere; }
 @media (min-width: 38rem) { .scenes { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
