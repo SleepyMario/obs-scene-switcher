@@ -19,8 +19,29 @@ const previewPanel = document.querySelector('#preview-panel');
 const previewImage = document.querySelector('#program-preview');
 const previewStatus = document.querySelector('#preview-status');
 const previewPlaceholder = document.querySelector('#preview-placeholder');
+const pageViewport = document.querySelector('#page-viewport');
+const pageTrack = document.querySelector('#page-track');
+const pageTabs = [...document.querySelectorAll('[data-page]')];
+const pagePanels = [...document.querySelectorAll('[data-page-panel]')];
 let previewLoading = false;
 let previewObjectURL = '';
+let activePage = 'controls';
+let swipeStartX = 0;
+let swipeStartY = 0;
+
+function selectPage(page) {
+  if (!['controls', 'preview'].includes(page)) return;
+  activePage = page;
+  pageTrack.classList.toggle('show-preview', page === 'preview');
+  for (const tab of pageTabs) {
+    const selected = tab.dataset.page === page;
+    tab.classList.toggle('selected', selected);
+    if (selected) tab.setAttribute('aria-current', 'page');
+    else tab.removeAttribute('aria-current');
+  }
+  for (const panel of pagePanels) panel.setAttribute('aria-hidden', String(panel.dataset.pagePanel !== page));
+  if (page === 'preview') loadPreview();
+}
 
 function clearPreview(message) {
   if (previewObjectURL) URL.revokeObjectURL(previewObjectURL);
@@ -32,7 +53,7 @@ function clearPreview(message) {
 }
 
 async function loadPreview() {
-  if (previewLoading || document.hidden || !previewPanel.open) return;
+  if (previewLoading || document.hidden || activePage !== 'preview') return;
   if (obsProcessState === 'stopped') {
     previewStatus.textContent = 'OBS is closed';
     clearPreview('Start OBS to see the program output.');
@@ -153,7 +174,19 @@ async function switchScene(name) {
 }
 
 refreshButton.addEventListener('click', () => loadScenes());
-previewPanel.addEventListener('toggle', () => { if (previewPanel.open) loadPreview(); });
+for (const tab of pageTabs) tab.addEventListener('click', () => selectPage(tab.dataset.page));
+pageViewport.addEventListener('touchstart', (event) => {
+  const touch = event.changedTouches[0];
+  swipeStartX = touch.clientX;
+  swipeStartY = touch.clientY;
+}, { passive: true });
+pageViewport.addEventListener('touchend', (event) => {
+  const touch = event.changedTouches[0];
+  const deltaX = touch.clientX - swipeStartX;
+  const deltaY = touch.clientY - swipeStartY;
+  if (Math.abs(deltaX) < 55 || Math.abs(deltaX) <= Math.abs(deltaY)) return;
+  selectPage(deltaX < 0 ? 'preview' : 'controls');
+}, { passive: true });
 async function loadSubtitleStatus() {
   try {
     const response = await fetch('/api/subtitles', { cache: 'no-store' });

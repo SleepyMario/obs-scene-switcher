@@ -16,43 +16,55 @@
       </div>
       <button id="refresh" class="icon" type="button" aria-label="Refresh scenes">↻</button>
     </header>
-    <section class="status" aria-live="polite">
-      <span id="dot" class="dot"></span>
-      <span id="status">Connecting…</span>
-    </section>
-    <section class="obs-controls" aria-label="OBS application">
-      <div class="obs-actions">
-        <button id="obs-start" class="subtitle-button start" type="button" disabled>Start OBS</button>
-        <button id="obs-stop" class="subtitle-button stop" type="button" disabled>Stop OBS</button>
+    <nav class="page-tabs" aria-label="Controller pages">
+      <button class="page-tab selected" data-page="controls" type="button" aria-current="page">Controls</button>
+      <button class="page-tab" data-page="preview" type="button">Preview</button>
+    </nav>
+    <div id="page-viewport" class="page-viewport">
+      <div id="page-track" class="page-track">
+        <section class="control-page" data-page-panel="controls" aria-label="OBS controls">
+          <section class="status" aria-live="polite">
+            <span id="dot" class="dot"></span>
+            <span id="status">Connecting…</span>
+          </section>
+          <section class="obs-controls" aria-label="OBS application">
+            <div class="obs-actions">
+              <button id="obs-start" class="subtitle-button start" type="button" disabled>Start OBS</button>
+              <button id="obs-stop" class="subtitle-button stop" type="button" disabled>Stop OBS</button>
+            </div>
+            <p id="obs-state" aria-live="polite">Checking OBS…</p>
+            <p id="obs-action-result" role="status"></p>
+          </section>
+          <section class="subtitle-card" aria-labelledby="subtitle-title">
+            <div>
+              <p class="eyebrow">GPU SUBTITLES</p>
+              <h2 id="subtitle-title">Original + English</h2>
+              <p id="subtitle-status">Checking subtitle worker…</p>
+            </div>
+            <div class="subtitle-mode" aria-label="Subtitle engine">
+              <button id="subtitle-remote" data-mode="remote" type="button">Remote</button>
+              <button id="subtitle-local" data-mode="local" type="button">Local</button>
+            </div>
+            <div class="subtitle-actions">
+              <button id="subtitle-toggle" class="subtitle-button start" type="button">Turn subtitles on</button>
+            </div>
+          </section>
+          <section id="scenes" class="scenes" aria-label="OBS scenes"></section>
+        </section>
+        <section class="control-page preview-page" data-page-panel="preview" aria-label="Program preview" aria-hidden="true">
+          <section id="preview-panel" class="preview-card">
+            <header class="preview-heading">
+              <span>Program preview</span>
+              <small id="preview-status">Connecting…</small>
+            </header>
+            <div class="preview-frame">
+              <img id="program-preview" alt="Current OBS program output" hidden>
+              <p id="preview-placeholder">Waiting for OBS…</p>
+            </div>
+          </section>
+        </section>
       </div>
-      <p id="obs-state" aria-live="polite">Checking OBS…</p>
-      <p id="obs-action-result" role="status"></p>
-    </section>
-    <details id="preview-panel" class="preview-card" open>
-      <summary>
-        <span>Program preview</span>
-        <small id="preview-status">Connecting…</small>
-      </summary>
-      <div class="preview-frame">
-        <img id="program-preview" alt="Current OBS program output" hidden>
-        <p id="preview-placeholder">Waiting for OBS…</p>
-      </div>
-    </details>
-    <section id="scenes" class="scenes" aria-label="OBS scenes"></section>
-    <section class="subtitle-card" aria-labelledby="subtitle-title">
-      <div>
-        <p class="eyebrow">GPU SUBTITLES</p>
-        <h2 id="subtitle-title">Original + English</h2>
-        <p id="subtitle-status">Checking subtitle worker…</p>
-      </div>
-      <div class="subtitle-mode" aria-label="Subtitle engine">
-        <button id="subtitle-remote" data-mode="remote" type="button">Remote</button>
-        <button id="subtitle-local" data-mode="local" type="button">Local</button>
-      </div>
-      <div class="subtitle-actions">
-        <button id="subtitle-toggle" class="subtitle-button start" type="button">Turn subtitles on</button>
-      </div>
-    </section>
+    </div>
   </main>
   <template id="scene-template">
     <button class="scene" type="button"><span></span><small>Tap to switch</small></button>

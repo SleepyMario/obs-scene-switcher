@@ -33,7 +33,7 @@ func TestEmbeddedPhonePageIncludesProgramPreview(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, expected := range []string{"preview-panel", "program-preview", "preview-placeholder"} {
+	for _, expected := range []string{"page-viewport", "data-page=\"controls\"", "data-page=\"preview\"", "preview-panel", "program-preview", "preview-placeholder"} {
 		if !strings.Contains(string(html), expected) {
 			t.Fatalf("phone page is missing %q", expected)
 		}
