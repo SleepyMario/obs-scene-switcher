@@ -74,6 +74,7 @@ func main() {
 	mux := http.NewServeMux()
 	mux.Handle("GET /", http.FileServer(http.FS(webRoot)))
 	mux.HandleFunc("GET /api/scenes", app.getScenes)
+	mux.HandleFunc("GET /api/preview", app.programPreview)
 	mux.HandleFunc("GET /api/obs", app.lifecycle.status)
 	mux.HandleFunc("POST /api/obs/{action}", app.lifecycle.action)
 	mux.HandleFunc("POST /api/scenes/{scene}", app.switchScene)
@@ -584,7 +585,7 @@ func (a *application) setIRLInputState(w http.ResponseWriter, r *http.Request) {
 func securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; style-src 'self'; script-src 'self'; connect-src 'self'")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; style-src 'self'; script-src 'self'; connect-src 'self'; img-src 'self' blob:")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")
 		next.ServeHTTP(w, r)

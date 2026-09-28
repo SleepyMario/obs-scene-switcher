@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -44,6 +45,33 @@ type obsResponse struct {
 
 type obsConfig struct {
 	Password string `json:"server_password"`
+}
+
+func (c *obsClient) programScreenshot(ctx context.Context) ([]byte, error) {
+	_, current, err := c.scenes(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(current) == "" {
+		return nil, fmt.Errorf("OBS has no current program scene")
+	}
+	response, err := c.request(ctx, "GetSourceScreenshot", map[string]any{
+		"sourceName":              current,
+		"imageFormat":             "jpg",
+		"imageWidth":              960,
+		"imageHeight":             540,
+		"imageCompressionQuality": 55,
+	})
+	if err != nil {
+		return nil, err
+	}
+	var data struct {
+		ImageData string `json:"imageData"`
+	}
+	if err := json.Unmarshal(response, &data); err != nil {
+		return nil, fmt.Errorf("decode OBS screenshot: %w", err)
+	}
+	return decodeScreenshotData(data.ImageData)
 }
 
 func (c *obsClient) scenes(ctx context.Context) ([]string, string, error) {

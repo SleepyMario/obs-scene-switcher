@@ -15,6 +15,52 @@ const obsState = document.querySelector('#obs-state');
 const obsResult = document.querySelector('#obs-action-result');
 let changingOBS = false;
 let obsProcessState = 'unknown';
+const previewPanel = document.querySelector('#preview-panel');
+const previewImage = document.querySelector('#program-preview');
+const previewStatus = document.querySelector('#preview-status');
+const previewPlaceholder = document.querySelector('#preview-placeholder');
+let previewLoading = false;
+let previewObjectURL = '';
+
+function clearPreview(message) {
+  if (previewObjectURL) URL.revokeObjectURL(previewObjectURL);
+  previewObjectURL = '';
+  previewImage.removeAttribute('src');
+  previewImage.hidden = true;
+  previewPlaceholder.hidden = false;
+  previewPlaceholder.textContent = message;
+}
+
+async function loadPreview() {
+  if (previewLoading || document.hidden || !previewPanel.open) return;
+  if (obsProcessState === 'stopped') {
+    previewStatus.textContent = 'OBS is closed';
+    clearPreview('Start OBS to see the program output.');
+    return;
+  }
+  previewLoading = true;
+  try {
+    const response = await fetch('/api/preview', { cache: 'no-store' });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.detail || data.error || 'Preview unavailable');
+    }
+    const image = await response.blob();
+    const nextURL = URL.createObjectURL(image);
+    const previousURL = previewObjectURL;
+    previewObjectURL = nextURL;
+    previewImage.src = nextURL;
+    previewImage.hidden = false;
+    previewPlaceholder.hidden = true;
+    previewStatus.textContent = `Updated ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
+    if (previousURL) URL.revokeObjectURL(previousURL);
+  } catch (error) {
+    previewStatus.textContent = 'Preview unavailable';
+    clearPreview(error.message);
+  } finally {
+    previewLoading = false;
+  }
+}
 
 async function loadOBSStatus() {
   try {
@@ -50,6 +96,7 @@ async function controlOBS(action) {
     changingOBS = false;
     await loadOBSStatus();
     await loadScenes();
+    await loadPreview();
   }
 }
 obsStart.addEventListener('click', () => controlOBS('start'));
@@ -96,6 +143,7 @@ async function switchScene(name) {
     const data = await response.json();
     if (!response.ok) throw new Error(data.detail || data.error || 'switch failed');
     await loadScenes();
+    await loadPreview();
   } catch (error) {
     setStatus(`Scene switch failed · ${error.message}`, false);
   } finally {
@@ -105,6 +153,7 @@ async function switchScene(name) {
 }
 
 refreshButton.addEventListener('click', () => loadScenes());
+previewPanel.addEventListener('toggle', () => { if (previewPanel.open) loadPreview(); });
 async function loadSubtitleStatus() {
   try {
     const response = await fetch('/api/subtitles', { cache: 'no-store' });
@@ -166,7 +215,9 @@ subtitleToggle.addEventListener('click', () => changeSubtitles(['starting', 'run
 for (const button of subtitleModes) button.addEventListener('click', () => selectSubtitleMode(button.dataset.mode));
 loadScenes();
 loadOBSStatus();
+loadPreview();
 setInterval(() => { if (!changingOBS && !document.hidden) loadOBSStatus(); }, 2500);
 loadSubtitleStatus();
 setInterval(() => { if (!switching && !document.hidden) loadScenes({ quiet: true }); }, 2500);
 setInterval(() => { if (!changingSubtitles && !document.hidden) loadSubtitleStatus(); }, 5000);
+setInterval(loadPreview, 2500);

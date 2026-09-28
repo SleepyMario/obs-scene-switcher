@@ -28,6 +28,16 @@
       <p id="obs-state" aria-live="polite">Checking OBS…</p>
       <p id="obs-action-result" role="status"></p>
     </section>
+    <details id="preview-panel" class="preview-card" open>
+      <summary>
+        <span>Program preview</span>
+        <small id="preview-status">Connecting…</small>
+      </summary>
+      <div class="preview-frame">
+        <img id="program-preview" alt="Current OBS program output" hidden>
+        <p id="preview-placeholder">Waiting for OBS…</p>
+      </div>
+    </details>
     <section id="scenes" class="scenes" aria-label="OBS scenes"></section>
     <section class="subtitle-card" aria-labelledby="subtitle-title">
       <div>
