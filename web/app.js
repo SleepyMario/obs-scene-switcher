@@ -15,6 +15,13 @@ const obsState = document.querySelector('#obs-state');
 const obsResult = document.querySelector('#obs-action-result');
 let changingOBS = false;
 let obsProcessState = 'unknown';
+const streamStart = document.querySelector('#stream-start');
+const streamStop = document.querySelector('#stream-stop');
+const recordStart = document.querySelector('#record-start');
+const recordStop = document.querySelector('#record-stop');
+const outputState = document.querySelector('#output-state');
+const outputResult = document.querySelector('#output-action-result');
+let changingOutput = false;
 const previewPanel = document.querySelector('#preview-panel');
 const previewImage = document.querySelector('#program-preview');
 const previewStatus = document.querySelector('#preview-status');
@@ -153,9 +160,55 @@ async function loadOBSStatus() {
     obsState.textContent = data.message;
     obsStart.disabled = changingOBS || data.state !== 'stopped';
     obsStop.disabled = changingOBS || data.state !== 'running';
+    if (data.state === 'running') await loadOutputStatus();
+    else disableOutputControls('Start OBS to control streaming and recording.');
   } catch (error) {
     obsState.textContent = error.message;
     obsStart.disabled = obsStop.disabled = true;
+    disableOutputControls('Streaming and recording controls are unavailable.');
+  }
+}
+
+function disableOutputControls(message) {
+  for (const button of [streamStart, streamStop, recordStart, recordStop]) button.disabled = true;
+  outputState.textContent = message;
+}
+
+async function loadOutputStatus() {
+  if (changingOutput || obsProcessState !== 'running') return;
+  try {
+    const response = await fetch('/api/outputs', { cache: 'no-store' });
+    const data = await response.json();
+    if (!response.ok || !data.available) throw new Error(data.error || 'Output status unavailable');
+    streamStart.disabled = data.streaming;
+    streamStop.disabled = !data.streaming;
+    recordStart.disabled = data.recording;
+    recordStop.disabled = !data.recording;
+    outputState.textContent = `${data.streaming ? 'Streaming is live' : 'Stream is off'} · ${data.recording ? (data.recording_paused ? 'Recording is paused' : 'Recording is active') : 'Recording is off'}`;
+  } catch (error) {
+    disableOutputControls(error.message);
+  }
+}
+
+async function controlOutput(kind, action) {
+  if (changingOutput || obsProcessState !== 'running') return;
+  const label = kind === 'stream' ? 'stream' : 'recording';
+  if (action === 'stop' && !window.confirm(`Stop the ${label}?`)) return;
+  changingOutput = true;
+  for (const button of [streamStart, streamStop, recordStart, recordStop]) button.disabled = true;
+  outputResult.textContent = `${action === 'start' ? 'Starting' : 'Stopping'} ${label}…`;
+  try {
+    const response = await fetch(`/api/outputs/${kind}/${action}`, {
+      method: 'POST', headers: { 'X-OBS-Control': '1' },
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'OBS output action failed');
+    outputResult.textContent = data.message;
+  } catch (error) {
+    outputResult.textContent = error.message;
+  } finally {
+    changingOutput = false;
+    await loadOutputStatus();
   }
 }
 
@@ -183,6 +236,10 @@ async function controlOBS(action) {
 }
 obsStart.addEventListener('click', () => controlOBS('start'));
 obsStop.addEventListener('click', () => controlOBS('stop'));
+streamStart.addEventListener('click', () => controlOutput('stream', 'start'));
+streamStop.addEventListener('click', () => controlOutput('stream', 'stop'));
+recordStart.addEventListener('click', () => controlOutput('record', 'start'));
+recordStop.addEventListener('click', () => controlOutput('record', 'stop'));
 
 function setStatus(text, online) {
   statusElement.textContent = text;

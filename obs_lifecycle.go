@@ -229,6 +229,100 @@ func (c *obsLifecycle) action(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "message": message})
 }
 
+func (c *obsLifecycle) outputStatus(w http.ResponseWriter, r *http.Request) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	pids, err := c.pids()
+	if err != nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "cannot check OBS process"})
+		return
+	}
+	if len(pids) == 0 {
+		writeJSON(w, http.StatusOK, map[string]any{"available": false, "streaming": false, "recording": false, "recording_paused": false})
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
+	defer cancel()
+	streaming, _, err := c.outputState(ctx, "GetStreamStatus")
+	if err != nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "cannot read OBS streaming state"})
+		return
+	}
+	recording, paused, err := c.outputState(ctx, "GetRecordStatus")
+	if err != nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "cannot read OBS recording state"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"available": true, "streaming": streaming, "recording": recording, "recording_paused": paused})
+}
+
+func (c *obsLifecycle) outputAction(w http.ResponseWriter, r *http.Request) {
+	if !sameOriginAction(r) {
+		writeJSON(w, http.StatusForbidden, map[string]any{"error": "use the phone controller to change OBS outputs"})
+		return
+	}
+	kind, action := r.PathValue("kind"), r.PathValue("action")
+	requests := map[string]map[string]string{
+		"stream": {"start": "StartStream", "stop": "StopStream"},
+		"record": {"start": "StartRecord", "stop": "StopRecord"},
+	}
+	requestType, ok := requests[kind][action]
+	if !ok {
+		writeJSON(w, http.StatusNotFound, map[string]any{"error": "unknown OBS output action"})
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	pids, err := c.pids()
+	if err != nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "cannot check OBS process"})
+		return
+	}
+	if len(pids) == 0 {
+		writeJSON(w, http.StatusConflict, map[string]any{"error": "start OBS first"})
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
+	defer cancel()
+	active, _, err := c.outputState(ctx, map[string]string{"stream": "GetStreamStatus", "record": "GetRecordStatus"}[kind])
+	if err != nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "cannot verify the current OBS output state"})
+		return
+	}
+	if (action == "start" && active) || (action == "stop" && !active) {
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "message": fmt.Sprintf("%s is already %s.", outputLabel(kind), map[bool]string{true: "active", false: "stopped"}[active])})
+		return
+	}
+	if _, err = c.request(ctx, requestType, nil); err != nil {
+		writeJSON(w, http.StatusConflict, map[string]any{"error": err.Error()})
+		return
+	}
+	verb := map[string]string{"start": "Started", "stop": "Stopped"}[action]
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "message": fmt.Sprintf("%s %s.", verb, outputLabel(kind))})
+}
+
+func (c *obsLifecycle) outputState(ctx context.Context, requestType string) (active, paused bool, err error) {
+	data, err := c.request(ctx, requestType, nil)
+	if err != nil {
+		return false, false, err
+	}
+	var state struct {
+		Active *bool `json:"outputActive"`
+		Paused bool  `json:"outputPaused"`
+	}
+	if json.Unmarshal(data, &state) != nil || state.Active == nil {
+		return false, false, errors.New("unknown OBS output state")
+	}
+	return *state.Active, state.Paused, nil
+}
+
+func outputLabel(kind string) string {
+	if kind == "record" {
+		return "recording"
+	}
+	return "streaming"
+}
+
 func (c *obsLifecycle) checkIdle(ctx context.Context) error {
 	for _, kind := range []string{"GetStreamStatus", "GetRecordStatus", "GetVirtualCamStatus"} {
 		data, err := c.request(ctx, kind, nil)

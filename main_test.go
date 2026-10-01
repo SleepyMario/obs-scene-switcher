@@ -163,6 +163,19 @@ func TestCombineCaptionSuppressesDuplicateLanguageLines(t *testing.T) {
 	}
 }
 
+func TestSelectSubtitleSourceAcceptsEitherReceiver(t *testing.T) {
+	first := "alsa_input.usb-Hollyland_receiver_A-01.analog-stereo"
+	second := "alsa_input.usb-Hollyland_receiver_B-01.analog-stereo"
+	listing := "61\talsa_input.usb-Capture_card-02.analog-stereo\tPipeWire\n3292\t" + second + "\tPipeWire\n"
+	got, err := selectSubtitleSource(first+","+second, listing)
+	if err != nil || got != second {
+		t.Fatalf("source=%q err=%v", got, err)
+	}
+	if _, err := selectSubtitleSource(first, listing); err == nil {
+		t.Fatal("expected unavailable configured receiver to fail")
+	}
+}
+
 func TestOBSAuthentication(t *testing.T) {
 	got := obsAuthentication("password", "salt", "challenge")
 	const want = "zTM5ki6L2vVvBQiTG9ckH1Lh64AbnCf6XZ226UmnkIA="

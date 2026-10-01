@@ -78,6 +78,8 @@ func main() {
 	mux.HandleFunc("GET /api/chat", app.chatFeed)
 	mux.HandleFunc("GET /api/obs", app.lifecycle.status)
 	mux.HandleFunc("POST /api/obs/{action}", app.lifecycle.action)
+	mux.HandleFunc("GET /api/outputs", app.lifecycle.outputStatus)
+	mux.HandleFunc("POST /api/outputs/{kind}/{action}", app.lifecycle.outputAction)
 	mux.HandleFunc("POST /api/scenes/{scene}", app.switchScene)
 	mux.HandleFunc("POST /api/irl/input/{state}", app.setIRLInputState)
 	mux.HandleFunc("GET /api/subtitles", app.subtitleStatus)

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 )
@@ -38,6 +39,16 @@ func lifecycleRequest(c *obsLifecycle, action string) *httptest.ResponseRecorder
 	r.Header.Set("X-OBS-Control", "1")
 	w := httptest.NewRecorder()
 	c.action(w, r)
+	return w
+}
+
+func outputRequest(c *obsLifecycle, kind, action string) *httptest.ResponseRecorder {
+	r := httptest.NewRequest("POST", "http://10.77.0.2:8798/api/outputs/"+kind+"/"+action, nil)
+	r.SetPathValue("kind", kind)
+	r.SetPathValue("action", action)
+	r.Header.Set("X-OBS-Control", "1")
+	w := httptest.NewRecorder()
+	c.outputAction(w, r)
 	return w
 }
 
@@ -167,6 +178,59 @@ func TestOBSActionRejectsForeignOriginAndForms(t *testing.T) {
 		if sameOriginAction(r) != tc.allowed {
 			t.Fatalf("unexpected permission for %+v", tc)
 		}
+	}
+}
+
+func TestOBSOutputActionsRequireRunningOBSAndCurrentState(t *testing.T) {
+	c := idleLifecycle()
+	if w := outputRequest(c, "stream", "start"); w.Code != http.StatusConflict {
+		t.Fatalf("closed OBS status=%d body=%s", w.Code, w.Body.String())
+	}
+	c.pids = func() ([]int, error) { return []int{123}, nil }
+	var requests []string
+	c.request = func(_ context.Context, kind string, _ any) (json.RawMessage, error) {
+		requests = append(requests, kind)
+		if kind == "GetStreamStatus" {
+			return json.RawMessage(`{"outputActive":false}`), nil
+		}
+		return json.RawMessage(`{}`), nil
+	}
+	if w := outputRequest(c, "stream", "start"); w.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
+	}
+	if len(requests) != 2 || requests[0] != "GetStreamStatus" || requests[1] != "StartStream" {
+		t.Fatalf("requests=%v", requests)
+	}
+}
+
+func TestOBSOutputActionIsIdempotent(t *testing.T) {
+	c := idleLifecycle()
+	c.pids = func() ([]int, error) { return []int{123}, nil }
+	c.request = func(_ context.Context, kind string, _ any) (json.RawMessage, error) {
+		if kind != "GetRecordStatus" {
+			t.Fatalf("unexpected mutation request %s", kind)
+		}
+		return json.RawMessage(`{"outputActive":true,"outputPaused":false}`), nil
+	}
+	if w := outputRequest(c, "record", "start"); w.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
+	}
+}
+
+func TestOBSOutputStatusReportsStreamAndRecording(t *testing.T) {
+	c := idleLifecycle()
+	c.pids = func() ([]int, error) { return []int{123}, nil }
+	c.request = func(_ context.Context, kind string, _ any) (json.RawMessage, error) {
+		if kind == "GetStreamStatus" {
+			return json.RawMessage(`{"outputActive":true}`), nil
+		}
+		return json.RawMessage(`{"outputActive":true,"outputPaused":true}`), nil
+	}
+	r := httptest.NewRequest("GET", "http://10.77.0.2:8798/api/outputs", nil)
+	w := httptest.NewRecorder()
+	c.outputStatus(w, r)
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"streaming":true`) || !strings.Contains(w.Body.String(), `"recording_paused":true`) {
+		t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
 	}
 }
 

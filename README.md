@@ -8,7 +8,7 @@ A small phone-first remote for changing the current OBS program scene over the p
 - The installed service binds only to Slacktop's WireGuard address, `10.77.0.2:8798`.
 - The backend connects to OBS on Slacktop's WireGuard address, `10.77.0.2:4455`, and reads OBS's existing password locally.
 - The OBS password is never sent to or stored on the phone.
-- The UI exposes scene selection and an optional GPU-subtitle session control. It can also launch/close the OBS application; it has no stream, recording, or computer-shutdown controls.
+- The UI exposes scene selection, streaming and recording controls, and an optional GPU-subtitle session control. It can also launch/close the OBS application; it has no computer-shutdown controls.
 - Subtitle provider credentials stay on the VPS. The temporary worker token is handled by the Slacktop backend and is never returned to the phone browser.
 - Microphone audio travels directly from Slacktop to the temporary worker, not through the VPS.
 
@@ -37,6 +37,8 @@ Install the on-demand launcher too (do not enable it at login):
 
 The laptop must be awake with its graphical session logged in. The launcher retains the existing camera/audio settings as explicitly requested; it selects Starting Soon without starting streaming or recording. The controller remains in its existing read-only sandbox; the separate user unit gives OBS its usual desktop access. It uses the same Qt/Xwayland display settings as the local OBS desktop launcher.
 
+Streaming and recording controls become available only while OBS is running. Each pair exposes the valid next action from OBS's live output state, and stopping either output asks for confirmation. Closing OBS remains blocked until streaming and recording are both stopped.
+
 Application lifecycle endpoints are `GET /api/obs` and `POST /api/obs/start|stop`. POST requires `X-OBS-Control: 1` and rejects foreign Origin headers. Start is serialized and debounced, detects existing local OBS instances and validates the Starting Soon scene before launch. Stop uses the verified local user-owned process only. OBS 32.2.2 handles SIGINT through its normal save/close path; this was checked against [upstream source](https://github.com/obsproject/obs-studio/blob/32.2.2/frontend/OBSApp.cpp#L1749).
 
 The OBS endpoint is currently fixed to Slacktop's WireGuard address. A later
@@ -45,7 +47,7 @@ WireGuard-connected streaming machine.
 
 ## Optional GPU subtitles
 
-Copy `subtitles.env.example` to `~/.config/obs-scene-switcher/subtitles.env`, set mode `0600`, and fill in the existing Streamchat bot GUI address/password plus a stable PipeWire/Pulse source name. The phone page has independent on/off and local/remote controls. Remote is the normal VPS/RunPod route. Local starts the already-installed `~/bin/subtitles` service and is retained as an explicit fallback; it is never selected automatically. Changing engines stops the current engine and leaves subtitles off.
+Copy `subtitles.env.example` to `~/.config/obs-scene-switcher/subtitles.env`, set mode `0600`, and fill in the existing Streamchat bot GUI address/password plus the accepted PipeWire/Pulse source names. Multiple microphone receivers can be listed in preferred order, separated by commas; the controller uses the first one currently connected. The phone page has independent on/off and local/remote controls. Remote is the normal VPS/RunPod route. Local starts the already-installed `~/bin/subtitles` service and is retained as an explicit fallback; it is never selected automatically. Changing engines stops the current engine and leaves subtitles off.
 
 The default output files are:
 

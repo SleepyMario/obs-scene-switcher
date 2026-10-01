@@ -49,7 +49,11 @@ func runSubtitleSender(ctx context.Context, cfg subtitleConfig, workerURL, token
 		return fmt.Errorf("unexpected subtitle worker response: %v", ready)
 	}
 
-	ffmpeg := exec.CommandContext(ctx, "ffmpeg", "-hide_banner", "-loglevel", "warning", "-f", "pulse", "-i", cfg.Source, "-vn", "-ac", "1", "-ar", "16000", "-f", "s16le", "-")
+	source, err := resolveSubtitleSource(ctx, cfg.Source)
+	if err != nil {
+		return err
+	}
+	ffmpeg := exec.CommandContext(ctx, "ffmpeg", "-hide_banner", "-loglevel", "warning", "-f", "pulse", "-i", source, "-vn", "-ac", "1", "-ar", "16000", "-f", "s16le", "-")
 	stdout, err := ffmpeg.StdoutPipe()
 	if err != nil {
 		return err
@@ -148,6 +152,32 @@ func runSubtitleSender(ctx context.Context, cfg subtitleConfig, workerURL, token
 		closeConnection()
 		return runErr
 	}
+}
+
+func resolveSubtitleSource(ctx context.Context, configured string) (string, error) {
+	listing, err := exec.CommandContext(ctx, "pactl", "list", "short", "sources").Output()
+	if err != nil {
+		return "", fmt.Errorf("list microphone sources: %w", err)
+	}
+	return selectSubtitleSource(configured, string(listing))
+}
+
+func selectSubtitleSource(configured, listing string) (string, error) {
+	candidates := strings.Split(configured, ",")
+	available := make(map[string]bool)
+	for _, line := range strings.Split(listing, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) >= 2 {
+			available[fields[1]] = true
+		}
+	}
+	for _, candidate := range candidates {
+		candidate = strings.TrimSpace(candidate)
+		if candidate != "" && available[candidate] {
+			return candidate, nil
+		}
+	}
+	return "", fmt.Errorf("none of the configured subtitle microphones is connected")
 }
 
 func combineCaption(original, english, chinese string) string {
